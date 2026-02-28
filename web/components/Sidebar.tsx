@@ -228,7 +228,7 @@ export default function Sidebar() {
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
                 <Image
-                  src="/logo.png"
+                  src="/logo2.png"
                   alt={t("NeoTutor Logo")}
                   width={32}
                   height={32}
