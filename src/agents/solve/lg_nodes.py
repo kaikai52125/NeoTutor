@@ -244,9 +244,19 @@ async def investigate_node(state: SolveState) -> dict[str, Any]:
         "analysis_should_stop": should_stop,
         "new_knowledge_ids": new_ids,
         "streaming_events": [
-            {"type": "progress", "stage": "investigate",
-             "round": state.get("analysis_iteration", 0) + 1,
-             "new_items": len(new_ids)}
+            {
+                "type": "progress",
+                "stage": "investigate",
+                "progress": {
+                    "round": state.get("analysis_iteration", 0) + 1,
+                    "new_items": len(new_ids),
+                },
+            },
+            {
+                "type": "log",
+                "level": "INFO",
+                "content": f"[Investigate] Round {state.get('analysis_iteration', 0) + 1} — {len(new_ids)} knowledge item(s) gathered",
+            },
         ],
     }
 
@@ -292,7 +302,16 @@ async def note_node(state: SolveState) -> dict[str, Any]:
     return {
         "knowledge_chain": _dump_knowledge_chain(mem),
         "streaming_events": [
-            {"type": "progress", "stage": "note", "summarised": len(new_ids)}
+            {
+                "type": "progress",
+                "stage": "investigate",
+                "progress": {"summarised": len(new_ids)},
+            },
+            {
+                "type": "log",
+                "level": "INFO",
+                "content": f"[Note] Summarised {len(new_ids)} knowledge item(s)",
+            },
         ],
     }
 
@@ -337,9 +356,16 @@ async def plan_node(state: SolveState) -> dict[str, Any]:
         "solve_iteration": 0,
         "finish_requested": False,
         "streaming_events": [
-            {"type": "status", "stage": "plan",
-             "message": "planning_solution",
-             "steps": len(sm.solve_chains)}
+            {
+                "type": "progress",
+                "stage": "solve",
+                "progress": {"steps": len(sm.solve_chains)},
+            },
+            {
+                "type": "log",
+                "level": "INFO",
+                "content": f"[Plan] Created {len(sm.solve_chains)} solve step(s)",
+            },
         ],
     }
 
@@ -391,7 +417,16 @@ async def exec_tools_node(state: SolveState) -> dict[str, Any]:
         "solve_steps": _dump_solve_steps(sm),
         "citations": _dump_citations(cm),
         "streaming_events": [
-            {"type": "progress", "stage": "exec_tools", "step": idx}
+            {
+                "type": "progress",
+                "stage": "solve",
+                "progress": {"step_index": idx},
+            },
+            {
+                "type": "log",
+                "level": "INFO",
+                "content": f"[Tool] Step {idx + 1} — tools executed",
+            },
         ],
     }
 
@@ -448,8 +483,20 @@ async def solve_step_node(state: SolveState) -> dict[str, Any]:
         "finish_requested": finish_requested,
         "solve_iteration": state.get("solve_iteration", 0) + 1,
         "streaming_events": [
-            {"type": "progress", "stage": "solve_step",
-             "step": idx, "finish_requested": finish_requested}
+            {
+                "type": "progress",
+                "stage": "solve",
+                "progress": {
+                    "step_index": idx,
+                    "step_id": sm.solve_chains[idx].step_id if idx < len(sm.solve_chains) else "",
+                    "step_target": sm.solve_chains[idx].step_target if idx < len(sm.solve_chains) else "",
+                },
+            },
+            {
+                "type": "log",
+                "level": "INFO",
+                "content": f"[Solve] Step {idx + 1}: {sm.solve_chains[idx].step_target[:80] if idx < len(sm.solve_chains) else ''}",
+            },
         ],
     }
 
@@ -499,7 +546,20 @@ async def response_node(state: SolveState) -> dict[str, Any]:
     return {
         "solve_steps": _dump_solve_steps(sm),
         "streaming_events": [
-            {"type": "progress", "stage": "response", "step": idx}
+            {
+                "type": "progress",
+                "stage": "response",
+                "progress": {
+                    "step_index": idx,
+                    "step_id": sm.solve_chains[idx].step_id if idx < len(sm.solve_chains) else "",
+                    "step_target": sm.solve_chains[idx].step_target if idx < len(sm.solve_chains) else "",
+                },
+            },
+            {
+                "type": "log",
+                "level": "INFO",
+                "content": f"[Response] Step {idx + 1} response written",
+            },
         ],
     }
 
@@ -518,7 +578,11 @@ async def advance_step_node(state: SolveState) -> dict[str, Any]:
         "solve_iteration": 0,
         "finish_requested": False,
         "streaming_events": [
-            {"type": "progress", "stage": "advance_step", "step": next_idx}
+            {
+                "type": "log",
+                "level": "INFO",
+                "content": f"[Advance] Moving to step {next_idx + 1}",
+            },
         ],
     }
 
@@ -571,7 +635,16 @@ async def finalize_node(state: SolveState) -> dict[str, Any]:
     return {
         "final_answer": final_answer,
         "streaming_events": [
-            {"type": "status", "stage": "finalize", "message": "complete"}
+            {
+                "type": "progress",
+                "stage": "response",
+                "progress": {"step_index": len(steps) - 1},
+            },
+            {
+                "type": "log",
+                "level": "INFO",
+                "content": f"[Finalize] Answer ready ({len(final_answer)} chars)",
+            },
         ],
     }
 
