@@ -1,0 +1,250 @@
+name: Build and Publish Docker Image
+
+on:
+  # Manual trigger only - gives full control over when images are published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g., 0.5.2, 0.6.0) - without 'v' prefix"
+        required: true
+        type: string
+      push_latest:
+        description: "Also update the 'latest' tag?"
+        required: true
+        type: boolean
+        default: true
+
+env:
+  REGISTRY: ghcr.io
+  # IMAGE_NAME must be lowercase for Docker
+  IMAGE_NAME: hkuds/deeptutor
+
+jobs:
+  # ============================================
+  # Build Multi-Architecture Docker Image
+  # ============================================
+  # This job builds both AMD64 and ARM64 images and creates
+  # a multi-arch manifest so Docker automatically pulls the
+  # correct architecture for each user's system.
+  # ============================================
+  build-multiarch:
+    name: Build Multi-Arch Image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate and set version
+        id: version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+
+          # Validate version format (e.g., 0.5.2, 1.0.0)
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Error: Invalid version format '$VERSION'"
+            echo "   Expected format: X.Y.Z (e.g., 0.5.2, 1.0.0)"
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "📌 Version: ${VERSION}"
+          echo "📌 Push latest: ${{ github.event.inputs.push_latest }}"
+
+      # ============================================
+      # Build and push multi-arch image
+      # Docker will automatically create a manifest list
+      # that includes both architectures
+      # ============================================
+      - name: Build and push multi-arch image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: production
+          push: true
+          # Build for both architectures in a single command
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.title=DeepTutor
+            org.opencontainers.image.description=AI-Powered Personalized Learning Assistant
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BACKEND_PORT=8001
+          provenance: false
+
+      # ============================================
+      # Update 'latest' tag if requested
+      # ============================================
+      - name: Tag as latest
+        if: github.event.inputs.push_latest == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          echo "🏷️ Tagging ${VERSION} as latest..."
+
+          # Pull the manifest and retag as latest
+          docker buildx imagetools create \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
+
+          echo "✅ Successfully tagged as latest"
+
+      # ============================================
+      # Create architecture-specific tags for compatibility
+      # Some users may prefer explicit architecture tags
+      # ============================================
+      - name: Create architecture-specific tags
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          echo "🏷️ Creating architecture-specific tags..."
+
+          # Create version-specific architecture tags
+          # These are optional convenience tags for users who want explicit control
+
+          # For AMD64
+          docker buildx imagetools create \
+            --tag ${IMAGE}:${VERSION}-amd64 \
+            ${IMAGE}:${VERSION} --platform linux/amd64 || true
+
+          # For ARM64
+          docker buildx imagetools create \
+            --tag ${IMAGE}:${VERSION}-arm64 \
+            ${IMAGE}:${VERSION} --platform linux/arm64 || true
+
+          # Create latest-arm64 for backward compatibility (only if pushing latest)
+          if [ "${{ github.event.inputs.push_latest }}" == "true" ]; then
+            docker buildx imagetools create \
+              --tag ${IMAGE}:latest-arm64 \
+              ${IMAGE}:latest --platform linux/arm64 || true
+          fi
+
+          echo "✅ Architecture-specific tags created"
+
+      # ============================================
+      # Verify the multi-arch manifest
+      # ============================================
+      - name: Verify multi-arch manifest
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          echo "🔍 Verifying multi-arch manifest for ${IMAGE}:${VERSION}..."
+          docker buildx imagetools inspect ${IMAGE}:${VERSION}
+
+          if [ "${{ github.event.inputs.push_latest }}" == "true" ]; then
+            echo ""
+            echo "🔍 Verifying multi-arch manifest for ${IMAGE}:latest..."
+            docker buildx imagetools inspect ${IMAGE}:latest
+          fi
+
+  # ============================================
+  # Generate Summary
+  # ============================================
+  summary:
+    name: Generate Summary
+    runs-on: ubuntu-latest
+    needs: [build-multiarch]
+    if: always()
+
+    steps:
+      - name: Get version
+        id: version
+        run: |
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+
+      - name: Generate image summary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          echo "## 🐳 Docker Images Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`${{ env.REGISTRY }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Build Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.build-multiarch.result }}" == "success" ]; then
+            echo "✅ **Multi-arch build successful!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Build failed**" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Available Images" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | Architectures | Description |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|---------------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| \`:latest\` | AMD64, ARM64 | Latest stable release (auto-detects architecture) |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`:${VERSION}\` | AMD64, ARM64 | Version ${VERSION} (auto-detects architecture) |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`:${VERSION}-amd64\` | AMD64 only | Explicit AMD64 image |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`:${VERSION}-arm64\` | ARM64 only | Explicit ARM64 image |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`:latest-arm64\` | ARM64 only | Latest ARM64 (backward compatibility) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Quick Start" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Recommended (auto-detects your architecture):**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run the container:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker run -d --name deeptutor \\\\" >> $GITHUB_STEP_SUMMARY
+          echo "  -p 8001:8001 -p 3782:3782 \\\\" >> $GITHUB_STEP_SUMMARY
+          echo "  -e LLM_MODEL=gpt-4o \\\\" >> $GITHUB_STEP_SUMMARY
+          echo "  -e LLM_API_KEY=your-api-key \\\\" >> $GITHUB_STEP_SUMMARY
+          echo "  -e EMBEDDING_MODEL=text-embedding-3-large \\\\" >> $GITHUB_STEP_SUMMARY
+          echo "  -e EMBEDDING_API_KEY=your-api-key \\\\" >> $GITHUB_STEP_SUMMARY
+          echo "  -v \$(pwd)/data:/app/data \\\\" >> $GITHUB_STEP_SUMMARY
+          echo "  -v \$(pwd)/config:/app/config:ro \\\\" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Architecture Detection" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The \`:latest\` and \`:${VERSION}\` tags are **multi-architecture images**." >> $GITHUB_STEP_SUMMARY
+          echo "Docker will automatically pull the correct image for your system:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **AMD64**: Intel/AMD processors (most Windows PCs, Linux servers)" >> $GITHUB_STEP_SUMMARY
+          echo "- **ARM64**: Apple Silicon (M1/M2/M3/M4), AWS Graviton, Raspberry Pi 4+" >> $GITHUB_STEP_SUMMARY

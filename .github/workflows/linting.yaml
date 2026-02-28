@@ -1,0 +1,147 @@
+name: Linting and Formatting
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  # ============================================
+  # Python Linting with pre-commit
+  # ============================================
+  python-lint:
+    name: Python Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-
+
+      - name: Install pre-commit
+        run: |
+          python -m pip install --upgrade pip
+          # Install pre-commit and tomli (required for bandit to read pyproject.toml)
+          pip install pre-commit tomli
+
+      - name: Run pre-commit on Python files
+        run: |
+          echo "🔍 Running pre-commit hooks on Python files..."
+          pre-commit run --all-files --verbose 2>&1 || {
+            echo ""
+            echo "╔═══════════════════════════════════════════════════════════════════════════╗"
+            echo "║                     ❌ Pre-commit checks failed!                          ║"
+            echo "╠═══════════════════════════════════════════════════════════════════════════╣"
+            echo "║  Please run the following commands locally to fix formatting issues:      ║"
+            echo "║                                                                           ║"
+            echo "║    pip install pre-commit       # Install pre-commit (if not installed)  ║"
+            echo "║    pre-commit install           # Set up git hooks (recommended)         ║"
+            echo "║    pre-commit run --all-files   # Fix all formatting issues              ║"
+            echo "║                                                                           ║"
+            echo "║  Then commit and push the changes.                                        ║"
+            echo "║                                                                           ║"
+            echo "║  💡 Tip: After running 'pre-commit install', hooks will run              ║"
+            echo "║     automatically on every commit!                                        ║"
+            echo "╚═══════════════════════════════════════════════════════════════════════════╝"
+            echo ""
+            exit 1
+          }
+
+  # ============================================
+  # Frontend Linting (TypeScript/JavaScript)
+  # ============================================
+  frontend-lint:
+    name: Frontend Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./web
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: ./web
+        run: |
+          echo "🔍 Running ESLint on frontend code..."
+          # Run ESLint directly (Next.js 16 removed the 'next lint' command)
+          npm run lint 2>&1 || {
+            echo ""
+            echo "╔═══════════════════════════════════════════════════════════════════════════╗"
+            echo "║                     ❌ ESLint checks failed!                              ║"
+            echo "╠═══════════════════════════════════════════════════════════════════════════╣"
+            echo "║  Please run the following commands locally to fix linting issues:         ║"
+            echo "║                                                                           ║"
+            echo "║    cd web                                                                 ║"
+            echo "║    npm run lint          # Check for linting issues                       ║"
+            echo "║    npm run lint -- --fix # Auto-fix linting issues                        ║"
+            echo "║                                                                           ║"
+            echo "║  Then commit and push the changes.                                        ║"
+            echo "╚═══════════════════════════════════════════════════════════════════════════╝"
+            echo ""
+            exit 1
+          }
+
+      - name: TypeScript type check
+        working-directory: ./web
+        run: |
+          echo "🔍 Running TypeScript type check..."
+          npx tsc --noEmit 2>&1 || {
+            echo ""
+            echo "╔═══════════════════════════════════════════════════════════════════════════╗"
+            echo "║                     ❌ TypeScript type check failed!                      ║"
+            echo "╠═══════════════════════════════════════════════════════════════════════════╣"
+            echo "║  Please fix the TypeScript errors shown above.                            ║"
+            echo "╚═══════════════════════════════════════════════════════════════════════════╝"
+            echo ""
+            exit 1
+          }
+
+  # ============================================
+  # Lint Summary
+  # ============================================
+  lint-summary:
+    name: Lint Summary
+    runs-on: ubuntu-latest
+    needs: [python-lint, frontend-lint]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## 🔍 Linting Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Python (pre-commit) | ${{ needs.python-lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend (ESLint + TypeScript) | ${{ needs.frontend-lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if linting failed
+        if: needs.python-lint.result == 'failure' || needs.frontend-lint.result == 'failure'
+        run: exit 1

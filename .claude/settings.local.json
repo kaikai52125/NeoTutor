@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import src.services.search; import inspect; print\\(inspect.iscoroutinefunction\\(src.services.search.web_search\\)\\)\")"
+    ]
+  }
+}
