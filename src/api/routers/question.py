@@ -8,10 +8,7 @@ import traceback
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from src.agents.question import AgentCoordinator
 from src.api.utils.history import ActivityType, history_manager
-from src.api.utils.log_interceptor import LogInterceptor
-from src.api.utils.task_id_manager import TaskIDManager
 from src.tools.question import mimic_exam_questions
 from src.utils.document_validator import DocumentValidator
 from src.utils.error_utils import format_exception_message
@@ -22,7 +19,6 @@ sys.path.insert(0, str(project_root))
 
 from src.logging import get_logger
 from src.services.config import load_config_with_main
-from src.services.llm.config import get_llm_config
 from src.services.settings.interface_settings import get_ui_language
 
 # Setup module logger with unified logging system (from config)
@@ -327,231 +323,15 @@ async def websocket_mimic_generate(websocket: WebSocket):
             pass
 
 
+
+
+# =============================================================================
+# LangGraph WebSocket Endpoint
+# =============================================================================
+
+
 @router.websocket("/generate")
 async def websocket_question_generate(websocket: WebSocket):
-    """Question generation WebSocket — powered by LangGraph 1.0.9."""
-    # Delegate directly to the LangGraph implementation
-    await websocket_question_generate_lg(websocket)
-
-# (original implementation kept below as _websocket_question_generate_legacy)
-async def _websocket_question_generate_legacy(websocket: WebSocket):
-    await websocket.accept()
-
-    # Get task ID manager
-    task_manager = TaskIDManager.get_instance()
-
-    try:
-        # 1. Wait for config
-        data = await websocket.receive_json()
-        requirement = data.get("requirement")
-        kb_name = data.get("kb_name", "ai_textbook")
-        count = data.get("count", 1)
-
-        if not requirement:
-            try:
-                await websocket.send_json({"type": "error", "content": "Requirement is required"})
-            except (RuntimeError, WebSocketDisconnect):
-                pass
-            return
-
-        # Generate task ID
-        task_key = f"question_{kb_name}_{hash(str(requirement))}"
-        task_id = task_manager.generate_task_id("question_gen", task_key)
-
-        # Send task ID to frontend
-        try:
-            await websocket.send_json({"type": "task_id", "task_id": task_id})
-        except (RuntimeError, WebSocketDisconnect):
-            logger.debug("WebSocket closed, cannot send task_id")
-            return
-
-        logger.info(
-            f"[{task_id}] Starting question generation: {requirement.get('knowledge_point', 'Unknown')}"
-        )
-
-        # 2. Initialize Coordinator
-        # Define unified output directory (DeepTutor/data/user/question)
-        root_dir = Path(__file__).parent.parent.parent.parent
-        output_base = root_dir / "data" / "user" / "question"
-
-        try:
-            llm_config = get_llm_config()
-            api_key = llm_config.api_key
-            base_url = llm_config.base_url
-            api_version = getattr(llm_config, "api_version", None)
-        except Exception:
-            api_key = None
-            base_url = None
-            api_version = None
-
-        coordinator = AgentCoordinator(
-            api_key=api_key,
-            base_url=base_url,
-            api_version=api_version,
-            kb_name=kb_name,
-            language=get_ui_language(default=config.get("system", {}).get("language", "en")),
-            max_rounds=10,
-            output_dir=str(output_base),
-        )
-
-        # 3. Setup Log Queue for WebSocket streaming
-        log_queue = asyncio.Queue()
-
-        # WebSocket callback for coordinator to send structured updates
-        async def ws_callback(data: dict):
-            try:
-                await log_queue.put(data)
-            except Exception:
-                pass
-
-        coordinator.set_ws_callback(ws_callback)
-
-        # 4. Define background pusher for logs
-        async def log_pusher():
-            while True:
-                entry = await log_queue.get()
-                try:
-                    await websocket.send_json(entry)
-                except Exception:
-                    break
-                log_queue.task_done()
-
-        pusher_task = asyncio.create_task(log_pusher())
-
-        # 5. Setup LogInterceptor for capturing logger output (same as solve.py)
-        # Get the coordinator's logger to intercept
-        target_logger = coordinator.logger.logger
-        interceptor = LogInterceptor(target_logger, log_queue)
-
-        # 6. Run Generation with LogInterceptor
-        try:
-            with interceptor:
-                try:
-                    await websocket.send_json({"type": "status", "content": "started"})
-                except (RuntimeError, WebSocketDisconnect):
-                    logger.debug("WebSocket closed, stopping question generation")
-                    return
-
-                # Use custom mode generation (new streamlined flow)
-                logger.info(f"Starting custom mode generation for {count} question(s)")
-
-                # Use the new custom generation method
-                batch_result = await coordinator.generate_questions_custom(
-                    requirement=requirement,
-                    num_questions=count,
-                )
-
-                # Results are already sent via WebSocket callbacks in the coordinator
-                # Just need to save to history for successful results
-                for result in batch_result.get("results", []):
-                    # Save to history
-                    history_manager.add_entry(
-                        activity_type=ActivityType.QUESTION,
-                        title=f"{requirement.get('knowledge_point', 'Question')} ({requirement.get('question_type')})",
-                        content={
-                            "requirement": requirement,
-                            "question": result.get("question", {}),
-                            "validation": result.get("validation", {}),
-                            "kb_name": kb_name,
-                        },
-                        summary=result.get("question", {}).get("question", "")[:100],
-                    )
-
-                # Send final token stats
-                try:
-                    await websocket.send_json(
-                        {"type": "token_stats", "stats": coordinator.token_stats}
-                    )
-                except (RuntimeError, WebSocketDisconnect):
-                    logger.debug("WebSocket closed, stopping question generation")
-
-                # Send batch summary
-                try:
-                    await websocket.send_json(
-                        {
-                            "type": "batch_summary",
-                            "requested": batch_result.get("requested", count),
-                            "completed": batch_result.get("completed", 0),
-                            "failed": batch_result.get("failed", 0),
-                            "plan": batch_result.get("plan", {}),
-                        }
-                    )
-                except (RuntimeError, WebSocketDisconnect):
-                    pass
-
-                if not batch_result.get("success"):
-                    logger.warning(
-                        f"Question generation had failures: {batch_result.get('failed', 0)} failed"
-                    )
-
-                # Wait for any pending messages in the queue to be sent
-                # Give the pusher a moment to process remaining messages
-                await asyncio.sleep(0.1)
-                while not log_queue.empty():
-                    await asyncio.sleep(0.05)
-
-                # Send complete signal
-                try:
-                    await websocket.send_json({"type": "complete"})
-                    logger.info(f"[{task_id}] Question generation completed")
-                    task_manager.update_task_status(task_id, "completed")
-                except (RuntimeError, WebSocketDisconnect):
-                    logger.debug("WebSocket closed, cannot send complete signal")
-
-        except Exception as e:
-            error_msg = format_exception_message(e)
-            error_traceback = traceback.format_exc()
-            logger.error(f"Question generation error: {error_msg}")
-            logger.error(f"Error traceback:\n{error_traceback}")
-
-            # Log additional context if available
-            try:
-                if "result" in locals():
-                    logger.error(
-                        f"Result type: {type(result)}, result keys: {result.keys() if isinstance(result, dict) else 'N/A'}"
-                    )
-                    if isinstance(result, dict) and "validation" in result:
-                        validation = result["validation"]
-                        logger.error(f"Validation type: {type(validation)}")
-                        if isinstance(validation, dict):
-                            logger.error(f"Validation keys: {validation.keys()}")
-                            logger.error(
-                                f"Issues type: {type(validation.get('issues'))}, value: {validation.get('issues')}"
-                            )
-                            logger.error(
-                                f"Suggestions type: {type(validation.get('suggestions'))}, value: {validation.get('suggestions')}"
-                            )
-            except Exception as context_error:
-                logger.warning(f"Failed to log error context: {context_error}")
-
-            try:
-                await websocket.send_json({"type": "error", "content": error_msg})
-            except (RuntimeError, WebSocketDisconnect):
-                logger.debug("WebSocket closed, cannot send error message")
-            task_manager.update_task_status(task_id, "error", error=error_msg)
-
-        finally:
-            pusher_task.cancel()
-            try:
-                await pusher_task
-            except asyncio.CancelledError:
-                pass
-            await websocket.close()
-
-    except WebSocketDisconnect:
-        logger.debug("Client disconnected")
-    except Exception as e:
-        error_msg = format_exception_message(e)
-        logger.error(f"WebSocket error: {error_msg}")
-
-
-# =============================================================================
-# LangGraph WebSocket Endpoint (parallel testing — replaces /generate after validation)
-# =============================================================================
-
-
-@router.websocket("/generate/lg")
-async def websocket_question_generate_lg(websocket: WebSocket):
     """
     LangGraph-based Question Generation endpoint.
 
