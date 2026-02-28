@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Constants for DeepTutor
+Constants for NeoTutor
 """
 
 from pathlib import Path

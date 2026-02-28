@@ -15,7 +15,7 @@ const font = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "DeepTutor Platform",
+  title: "NeoTutor Platform",
   description: "Multi-Agent Teaching & Research Copilot",
 };
 

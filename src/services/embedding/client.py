@@ -3,7 +3,7 @@
 Embedding Client
 ================
 
-Unified embedding client for all DeepTutor services.
+Unified embedding client for all NeoTutor services.
 Now supports multiple providers through adapters.
 """
 

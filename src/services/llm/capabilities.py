@@ -164,7 +164,7 @@ MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
         "system_in_messages": False,
     },
     # Reasoning models - only support temperature=1.0
-    # See: https://github.com/HKUDS/DeepTutor/issues/141
+    # See: https://github.com/HKUDS/NeoTutor/issues/141
     "gpt-5": {
         "forced_temperature": 1.0,
     },

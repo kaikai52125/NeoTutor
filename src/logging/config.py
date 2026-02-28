@@ -3,7 +3,7 @@
 Logging Configuration
 =====================
 
-Unified logging configuration for the entire DeepTutor system.
+Unified logging configuration for the entire NeoTutor system.
 A single `level` parameter controls all logging (including RAG modules).
 """
 

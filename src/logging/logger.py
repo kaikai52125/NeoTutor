@@ -128,7 +128,7 @@ class FileFormatter(logging.Formatter):
 
 class Logger:
     """
-    Unified logger for DeepTutor.
+    Unified logger for NeoTutor.
 
     Features:
     - Consistent format across all modules

@@ -607,7 +607,7 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
   };
 
   // --- Sidebar Customization State ---
-  const DEFAULT_DESCRIPTION = "✨ Data Intelligence Lab @ HKU";
+  const DEFAULT_DESCRIPTION = "✨ Rebuilt by HouKai based on DeepTutor";
   const DEFAULT_NAV_ORDER: SidebarNavOrder = {
     start: ["/", "/history", "/knowledge", "/notebook"],
     learnResearch: [

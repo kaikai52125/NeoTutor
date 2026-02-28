@@ -1,5 +1,5 @@
 """
-Default configuration values for DeepTutor.
+Default configuration values for NeoTutor.
 """
 
 from pathlib import Path

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-load_dotenv(PROJECT_ROOT / "DeepTutor.env", override=False)
+load_dotenv(PROJECT_ROOT / ".env", override=False)
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 # Storage directory

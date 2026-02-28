@@ -6,7 +6,7 @@ Features:
 2. Parse paper metadata
 3. Format paper information
 
-Author: DeepTutor Team
+Author: NeoTutor Team
 Version: v1.0
 Based on: TODO.md specification
 """

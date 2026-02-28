@@ -229,7 +229,7 @@ export default function Sidebar() {
               <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
                 <Image
                   src="/logo.png"
-                  alt={t("DeepTutor Logo")}
+                  alt={t("NeoTutor Logo")}
                   width={32}
                   height={32}
                   className="object-contain"
@@ -243,7 +243,7 @@ export default function Sidebar() {
                     : "opacity-100"
                 }`}
               >
-                DeepTutor
+                NeoTutor
               </h1>
             </div>
             <div
@@ -262,16 +262,16 @@ export default function Sidebar() {
                 <ChevronsLeft className="w-4 h-4" />
               </button>
               <a
-                href="https://hkuds.github.io/DeepTutor/"
+                href="https://github.com/kaikai52125/NeoTutor"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
-                title={t("Visit DeepTutor Homepage")}
+                title={t("Visit NeoTutor Homepage")}
               >
                 <Globe className="w-4 h-4" />
               </a>
               <a
-                href="https://github.com/HKUDS/DeepTutor"
+                href="https://github.com/kaikai52125/NeoTutor"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"

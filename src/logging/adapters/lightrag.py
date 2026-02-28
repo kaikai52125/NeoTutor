@@ -4,7 +4,7 @@
 LightRAG Log Forwarder
 ======================
 
-Forwards LightRAG and RAG-Anything logs to DeepTutor's unified logging system.
+Forwards LightRAG and RAG-Anything logs to NeoTutor's unified logging system.
 Uses the unified global log level from config/main.yaml -> logging.level
 """
 
@@ -16,13 +16,13 @@ from typing import Optional
 
 class LightRAGLogForwarder(logging.Handler):
     """
-    Handler that forwards LightRAG logger messages to DeepTutor logger.
+    Handler that forwards LightRAG logger messages to NeoTutor logger.
     """
 
     def __init__(self, ai_tutor_logger, add_prefix: bool = True):
         """
         Args:
-            ai_tutor_logger: DeepTutor Logger instance
+            ai_tutor_logger: NeoTutor Logger instance
             add_prefix: Whether to add [LightRAG] prefix to messages
         """
         super().__init__()
@@ -33,12 +33,12 @@ class LightRAGLogForwarder(logging.Handler):
 
     def emit(self, record: logging.LogRecord):
         """
-        Forward log record to DeepTutor logger with proper level mapping.
+        Forward log record to NeoTutor logger with proper level mapping.
         """
         try:
             message = record.getMessage()
 
-            # Map LightRAG log levels to DeepTutor logger methods
+            # Map LightRAG log levels to NeoTutor logger methods
             level = record.levelno
             if level >= logging.ERROR:
                 self.ai_tutor_logger.error(message)
@@ -134,7 +134,7 @@ def LightRAGLogContext(logger_name: Optional[str] = None, scene: Optional[str] =
         else:
             logger_name = "Main"
 
-    # Get DeepTutor logger
+    # Get NeoTutor logger
     ai_tutor_logger = get_logger(logger_name)
 
     # Get forwarding settings

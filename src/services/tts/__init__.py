@@ -3,7 +3,7 @@
 TTS Service
 ===========
 
-Text-to-Speech configuration for DeepTutor.
+Text-to-Speech configuration for NeoTutor.
 
 Usage:
     from src.services.tts import get_tts_config

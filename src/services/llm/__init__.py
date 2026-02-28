@@ -3,7 +3,7 @@
 LLM Service
 ===========
 
-Unified LLM service for all DeepTutor modules.
+Unified LLM service for all NeoTutor modules.
 
 Architecture:
     Agents (ChatAgent, GuideAgent, etc.)

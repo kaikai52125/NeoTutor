@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Unified Logging System for DeepTutor
+Unified Logging System for NeoTutor
 =====================================
 
 A clean, consistent logging system with:

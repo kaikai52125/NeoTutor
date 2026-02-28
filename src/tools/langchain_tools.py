@@ -3,7 +3,7 @@
 LangChain Tool Wrappers
 ========================
 
-Wraps existing DeepTutor tool functions as LangChain 1.x @tool objects so they
+Wraps existing NeoTutor tool functions as LangChain 1.x @tool objects so they
 can be bound to ChatModels via `llm.bind_tools(...)` and used inside LangGraph nodes.
 
 IMPORTANT: The original tool implementations in src/tools/ are NOT modified.

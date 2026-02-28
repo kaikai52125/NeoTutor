@@ -3,7 +3,7 @@
 LLM Factory - Central Hub for LLM Calls
 =======================================
 
-This module serves as the central hub for all LLM calls in DeepTutor.
+This module serves as the central hub for all LLM calls in NeoTutor.
 It provides a unified interface for agents to call LLMs, routing requests
 to the appropriate provider (cloud or local) based on URL detection.
 

@@ -3,7 +3,7 @@
 LLM Client
 ==========
 
-Unified LLM client for all DeepTutor services.
+Unified LLM client for all NeoTutor services.
 
 Note: This is a legacy interface. Prefer using the factory functions directly:
     from src.services.llm import complete, stream

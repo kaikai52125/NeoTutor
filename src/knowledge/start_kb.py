@@ -393,7 +393,7 @@ Usage Examples:
   python -m knowledge_init.start_kb init my_kb --docs document.pdf
   python -m knowledge_init.start_kb clean-rag C2-test
 
-  [Important] All commands must be run from project root directory (DeepTutor/)!
+  [Important] All commands must be run from project root directory (NeoTutor/)!
         """,
     )
 

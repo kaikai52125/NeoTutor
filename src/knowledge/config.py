@@ -6,7 +6,7 @@ Knowledge Base Path Configuration Module - Unified management of all paths
 import os
 from pathlib import Path
 
-# Project root directory (DeepTutor/)
+# Project root directory (NeoTutor/)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
 
 # Knowledge base base directory

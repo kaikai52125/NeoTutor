@@ -29,7 +29,7 @@ tools:
     max_results: 5
 logging:
   # Global log level for the entire system (DEBUG, INFO, WARNING, ERROR)
-  # This controls both DeepTutor logs and RAG module logs
+  # This controls both NeoTutor logs and RAG module logs
   level: DEBUG
   save_to_file: true
   console_output: true

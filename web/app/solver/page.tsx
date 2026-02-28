@@ -398,7 +398,7 @@ export default function SolverPage() {
                     <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400 font-medium">
                         <CheckCircle2 className="w-4 h-4" />
-                        {t("Verified by DeepTutor Logic Engine")}
+                        {t("Verified by NeoTutor Logic Engine")}
                       </div>
                       <button
                         onClick={() => {
@@ -553,7 +553,7 @@ export default function SolverPage() {
           </div>
           <div className="text-center text-[10px] text-slate-400 dark:text-slate-500 mt-2">
             {t(
-              "DeepTutor can make mistakes. Please verify important information.",
+              "NeoTutor can make mistakes. Please verify important information.",
             )}
           </div>
         </div>

@@ -148,13 +148,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="DeepTutor API",
+    title="NeoTutor API",
     version="1.0.0",
     lifespan=lifespan,
     # Disable automatic trailing slash redirects to prevent protocol downgrade issues
     # when deployed behind HTTPS reverse proxies (e.g., nginx).
     # Without this, FastAPI's 307 redirects may change HTTPS to HTTP.
-    # See: https://github.com/HKUDS/DeepTutor/issues/112
     redirect_slashes=False,
 )
 
@@ -170,7 +169,7 @@ app.add_middleware(
 # Mount user directory as static root for generated artifacts
 # This allows frontend to access generated artifacts (images, PDFs, etc.)
 # URL: /api/outputs/solve/solve_xxx/artifacts/image.png
-# Physical Path: DeepTutor/data/user/solve/solve_xxx/artifacts/image.png
+# Physical Path: NeoTutor/data/user/solve/solve_xxx/artifacts/image.png
 project_root = Path(__file__).parent.parent.parent
 user_dir = project_root / "data" / "user"
 
@@ -205,7 +204,7 @@ app.include_router(agent_config.router, prefix="/api/v1/agent-config", tags=["ag
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to DeepTutor API"}
+    return {"message": "Welcome to NeoTutor API"}
 
 
 if __name__ == "__main__":

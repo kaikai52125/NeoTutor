@@ -190,7 +190,7 @@ export default function HomePage() {
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="text-center max-w-2xl mx-auto mb-8">
             <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100 mb-3 tracking-tight">
-              {t("Welcome to DeepTutor")}
+              {t("Welcome to NeoTutor")}
             </h1>
             <p className="text-lg text-slate-500 dark:text-slate-400">
               {t("How can I help you today?")}

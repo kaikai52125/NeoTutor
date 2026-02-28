@@ -57,7 +57,7 @@ def init_user_directories(project_root: Path | None = None) -> None:
         # .parent = src/services/setup/
         # .parent.parent = src/services/
         # .parent.parent.parent = src/
-        # .parent.parent.parent.parent = DeepTutor/ (project root)
+        # .parent.parent.parent.parent = NeoTutor/ (project root)
         project_root = Path(__file__).parent.parent.parent.parent
 
     # Get user data directory from config

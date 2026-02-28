@@ -4,7 +4,7 @@
 LlamaIndex Log Forwarder
 ========================
 
-Forwards LlamaIndex logs to DeepTutor's unified logging system.
+Forwards LlamaIndex logs to NeoTutor's unified logging system.
 """
 
 from contextlib import contextmanager
@@ -14,13 +14,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 class LlamaIndexLogForwarder(logging.Handler):
     """
-    Handler that forwards LlamaIndex logger messages to DeepTutor logger.
+    Handler that forwards LlamaIndex logger messages to NeoTutor logger.
     """
 
     def __init__(self, ai_tutor_logger, add_prefix: bool = True):
         """
         Args:
-            ai_tutor_logger: DeepTutor Logger instance
+            ai_tutor_logger: NeoTutor Logger instance
             add_prefix: Whether to add prefix to messages
         """
         super().__init__()
@@ -31,7 +31,7 @@ class LlamaIndexLogForwarder(logging.Handler):
 
     def emit(self, record: logging.LogRecord):
         """
-        Forward log record to DeepTutor logger.
+        Forward log record to NeoTutor logger.
         """
         try:
             message = record.getMessage()
@@ -78,7 +78,7 @@ def LlamaIndexLogContext(
     if logger_name is None:
         logger_name = scene.title().replace("_", "")
 
-    # Get DeepTutor logger
+    # Get NeoTutor logger
     ai_tutor_logger = get_logger(logger_name)
 
     # Get LlamaIndex loggers
