@@ -2,9 +2,10 @@
 Guided Learning API Router
 ==========================
 
-Provides session creation, learning progress management, and chat interaction.
+All endpoints are powered by LangGraph (no GuideManager / BaseAgent).
 """
 
+import uuid
 from pathlib import Path
 import sys
 
@@ -15,364 +16,69 @@ project_root = Path(__file__).parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from src.agents.base_agent import BaseAgent
-from src.agents.guide.guide_manager import GuideManager
 from src.api.utils.history import history_manager, ActivityType
 from src.api.utils.notebook_manager import notebook_manager
-from src.api.utils.task_id_manager import TaskIDManager
 from src.logging import get_logger
 from src.services.config import load_config_with_main
-from src.services.llm import get_llm_config
 from src.services.settings.interface_settings import get_ui_language
 
 router = APIRouter()
 
-# Initialize logger with config
 project_root = Path(__file__).parent.parent.parent.parent
 config = load_config_with_main("guide_config.yaml", project_root)
 log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
 logger = get_logger("Guide", level="INFO", log_dir=log_dir)
 
 
-# === Request/Response Models ===
+# === Request / Response Models ===
 
 
 class CreateSessionRequest(BaseModel):
-    """Create session request"""
-
-    notebook_id: str | None = None  # Optional, single notebook mode
-    records: list[dict] | None = None  # Optional, cross-notebook mode with direct records
+    notebook_id: str | None = None
+    records: list[dict] | None = None
 
 
 class ChatRequest(BaseModel):
-    """Chat request"""
-
     session_id: str
     message: str
 
 
 class FixHtmlRequest(BaseModel):
-    """Fix HTML request"""
-
     session_id: str
     bug_description: str
 
 
 class NextKnowledgeRequest(BaseModel):
-    """Next knowledge point request"""
-
     session_id: str
 
 
-# === Helper Functions ===
+# === Shared helpers ===
 
 
-def get_guide_manager():
-    """Get GuideManager instance"""
-    try:
-        llm_config = get_llm_config()
-        api_key = llm_config.api_key
-        base_url = llm_config.base_url
-        api_version = getattr(llm_config, "api_version", None)
-        binding = llm_config.binding
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM config error: {e!s}")
-
-    ui_language = get_ui_language(default=config.get("system", {}).get("language", "en"))
-    return GuideManager(
-        api_key=api_key,
-        base_url=base_url,
-        api_version=api_version,
-        language=ui_language,
-        binding=binding,
-    )  # Read from config file
+def _language() -> str:
+    return get_ui_language(default=config.get("system", {}).get("language", "en"))
 
 
-# === REST API Endpoints ===
+def _get_graph():
+    from src.agents.guide.lg_graph import get_guide_graph
+    return get_guide_graph()
+
+
+def _lg_config(session_id: str) -> dict:
+    return {"configurable": {"thread_id": session_id}}
+
+
+# === REST Endpoints ===
 
 
 @router.post("/create_session")
 async def create_session(request: CreateSessionRequest):
-    """Guide session creation — powered by LangGraph 1.0.9."""
-    return await create_session_lg(request)
+    """Create a guide session — locate knowledge points via LangGraph."""
+    session_id = str(uuid.uuid4())
+    language = _language()
 
-
-async def _create_session_legacy(request: CreateSessionRequest):
-    """Original implementation preserved for reference."""
-    task_manager = TaskIDManager.get_instance()
-
-    try:
-        records = []
-        notebook_name = "Unknown"
-
-        # Mode 1: Cross-notebook mode - use provided records directly
-        if request.records and isinstance(request.records, list):
-            records = request.records
-            notebook_name = f"Cross-notebook ({len(records)} records)"
-        # Mode 2: Single notebook mode - get records from notebook
-        elif request.notebook_id:
-            notebook = notebook_manager.get_notebook(request.notebook_id)
-            if not notebook:
-                raise HTTPException(status_code=404, detail="Notebook not found")
-
-            records = notebook.get("records", [])
-            notebook_name = notebook.get("name", "Unknown")
-        else:
-            raise HTTPException(status_code=400, detail="Must provide notebook_id or records")
-
-        if not records:
-            raise HTTPException(status_code=400, detail="No available records")
-
-        # Reset LLM stats for new session
-        BaseAgent.reset_stats("guide")
-
-        manager = get_guide_manager()
-        result = await manager.create_session(
-            notebook_id=request.notebook_id or "cross_notebook",
-            notebook_name=notebook_name,
-            records=records,
-        )
-
-        if result and "session_id" in result:
-            session_id = result["session_id"]
-            task_id = task_manager.generate_task_id("guide", session_id)
-            logger.info(f"[{task_id}] Session created: {session_id}")
-
-        return result
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Create session failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/start")
-async def start_learning(request: NextKnowledgeRequest):
-    """Guide start learning — powered by LangGraph 1.0.9."""
-    return await start_learning_lg({"session_id": request.session_id})
-
-
-async def _start_learning_legacy(request: NextKnowledgeRequest):
-    """Original implementation preserved for reference."""
-    try:
-        manager = get_guide_manager()
-        result = await manager.start_learning(request.session_id)
-        return result
-    except Exception as e:
-        logger.error(f"Start learning failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/next")
-async def next_knowledge(request: NextKnowledgeRequest):
-    """Guide next knowledge point — powered by LangGraph 1.0.9."""
-    return await next_knowledge_lg({"session_id": request.session_id})
-
-
-async def _next_knowledge_legacy(request: NextKnowledgeRequest):
-    """Original implementation preserved for reference."""
-    try:
-        manager = get_guide_manager()
-        result = await manager.next_knowledge(request.session_id)
-
-        # Print stats if learning completed
-        if result.get("learning_complete", False):
-            BaseAgent.print_stats("guide")
-
-        return result
-    except Exception as e:
-        logger.error(f"Next knowledge failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/chat")
-async def chat(request: ChatRequest):
-    """Guide chat — powered by LangGraph 1.0.9."""
-    return await chat_lg(request)
-
-
-async def _chat_legacy(request: ChatRequest):
-    """Original implementation preserved for reference."""
-    try:
-        manager = get_guide_manager()
-        result = await manager.chat(request.session_id, request.message)
-        return result
-    except Exception as e:
-        logger.error(f"Chat failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/fix_html")
-async def fix_html(request: FixHtmlRequest):
-    """Guide fix HTML — powered by LangGraph 1.0.9."""
-    return await fix_html_lg({"session_id": request.session_id, "bug_description": request.bug_description})
-
-
-async def _fix_html_legacy(request: FixHtmlRequest):
-    """Original implementation preserved for reference."""
-    try:
-        manager = get_guide_manager()
-        result = await manager.fix_html(request.session_id, request.bug_description)
-        return result
-    except Exception as e:
-        logger.error(f"Fix HTML failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/session/{session_id}")
-async def get_session(session_id: str):
-    """
-    Get session information.
-    """
-    try:
-        manager = get_guide_manager()
-        session = manager.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        return session
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Get session failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/session/{session_id}/html")
-async def get_current_html(session_id: str):
-    """
-    Get the current HTML page.
-    """
-    try:
-        manager = get_guide_manager()
-        html = manager.get_current_html(session_id)
-        if html is None:
-            raise HTTPException(status_code=404, detail="Session not found or no HTML content")
-        return {"html": html}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Get HTML failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# === WebSocket Endpoint ===
-
-
-@router.websocket("/ws/{session_id}")
-async def websocket_guide(websocket: WebSocket, session_id: str):
-    """
-    WebSocket endpoint for real-time interaction.
-
-    Message types:
-    - start: Start learning
-    - next: Next knowledge point
-    - chat: Send chat message
-    - fix_html: Fix HTML
-    - get_session: Get session state
-    """
-    await websocket.accept()
-
-    task_manager = TaskIDManager.get_instance()
-    task_id = task_manager.generate_task_id("guide", session_id)
-
-    try:
-        await websocket.send_json({"type": "task_id", "task_id": task_id})
-    except (RuntimeError, WebSocketDisconnect, ConnectionError) as e:
-        logger.debug(f"Failed to send task_id: {e}")
-
-    try:
-        manager = get_guide_manager()
-
-        session = manager.get_session(session_id)
-        if not session:
-            await websocket.send_json({"type": "error", "content": "Session not found"})
-            await websocket.close()
-            return
-
-        logger.info(f"[{task_id}] Guide session started: {session_id}")
-
-        await websocket.send_json({"type": "session_info", "data": session})
-
-        while True:
-            try:
-                data = await websocket.receive_json()
-                msg_type = data.get("type", "")
-
-                if msg_type == "start":
-                    logger.debug(f"[{task_id}] Start learning")
-                    result = await manager.start_learning(session_id)
-                    await websocket.send_json({"type": "start_result", "data": result})
-
-                elif msg_type == "next":
-                    logger.debug(f"[{task_id}] Next knowledge point")
-                    result = await manager.next_knowledge(session_id)
-                    await websocket.send_json({"type": "next_result", "data": result})
-
-                elif msg_type == "chat":
-                    message = data.get("message", "")
-                    if message:
-                        logger.debug(f"[{task_id}] User message: {message[:50]}...")
-                        result = await manager.chat(session_id, message)
-                        await websocket.send_json({"type": "chat_result", "data": result})
-
-                elif msg_type == "fix_html":
-                    bug_desc = data.get("bug_description", "")
-                    logger.debug(f"[{task_id}] Fix HTML: {bug_desc[:50]}...")
-                    result = await manager.fix_html(session_id, bug_desc)
-                    await websocket.send_json({"type": "fix_result", "data": result})
-
-                elif msg_type == "get_session":
-                    session = manager.get_session(session_id)
-                    await websocket.send_json({"type": "session_info", "data": session})
-
-                else:
-                    await websocket.send_json(
-                        {"type": "error", "content": f"Unknown message type: {msg_type}"}
-                    )
-
-            except WebSocketDisconnect:
-                logger.debug(f"WebSocket disconnected: {session_id}")
-                break
-            except Exception as e:
-                logger.error(f"WebSocket error: {e}")
-                await websocket.send_json({"type": "error", "content": str(e)})
-
-    except Exception as e:
-        logger.error(f"WebSocket connection error: {e}")
-        try:
-            await websocket.close()
-        except (RuntimeError, WebSocketDisconnect, ConnectionError):
-            pass  # Connection already closed
-
-
-@router.get("/health")
-async def health_check():
-    """Health check"""
-    return {"status": "healthy", "service": "guide"}
-
-
-# =============================================================================
-# LangGraph REST Endpoints (parallel testing — replaces originals after validation)
-# =============================================================================
-
-
-@router.post("/create_session/lg")
-async def create_session_lg(request: CreateSessionRequest):
-    """
-    LangGraph-based session creation.
-
-    Calls locate_node to extract knowledge points. The resulting state is
-    persisted by MemorySaver keyed on a new session_id.
-    """
-    import uuid as _uuid
-    from src.agents.guide.lg_graph import get_guide_graph
-
-    session_id = str(_uuid.uuid4())
-    language = get_ui_language(default=config.get("system", {}).get("language", "en"))
-
-    # Resolve records
     records: list = []
+    notebook_name: str = ""
     if request.records:
         records = request.records
     elif request.notebook_id:
@@ -380,13 +86,16 @@ async def create_session_lg(request: CreateSessionRequest):
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
         records = notebook.get("records", [])
+        notebook_name = notebook.get("name", "")
 
-    graph = get_guide_graph()
-    config_lg = {"configurable": {"thread_id": session_id}}
+    if not records:
+        raise HTTPException(status_code=400, detail="No records available")
+
+    graph = _get_graph()
     initial_state = {
         "session_id": session_id,
         "notebook_id": request.notebook_id or "",
-        "notebook_name": "",
+        "notebook_name": notebook_name,
         "language": language,
         "action": "create",
         "user_message": "",
@@ -401,7 +110,7 @@ async def create_session_lg(request: CreateSessionRequest):
     }
 
     try:
-        final_state = await graph.ainvoke(initial_state, config=config_lg)
+        final_state = await graph.ainvoke(initial_state, config=_lg_config(session_id))
         kps = final_state.get("knowledge_points", [])
         return {
             "success": True,
@@ -411,25 +120,19 @@ async def create_session_lg(request: CreateSessionRequest):
             "status": final_state.get("status", "initialized"),
         }
     except Exception as exc:
-        logger.error(f"LangGraph Guide create_session error: {exc}")
+        logger.error("create_session error: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.post("/start/lg")
-async def start_learning_lg(request: dict):
-    """LangGraph-based start learning (generate first HTML page)."""
-    from src.agents.guide.lg_graph import get_guide_graph
-
-    session_id: str = request.get("session_id", "")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id is required")
-
-    graph = get_guide_graph()
-    config_lg = {"configurable": {"thread_id": session_id}}
+@router.post("/start")
+async def start_learning(request: NextKnowledgeRequest):
+    """Generate the first HTML page for the session."""
+    session_id = request.session_id
+    graph = _get_graph()
     try:
         final_state = await graph.ainvoke(
             {"action": "start", "user_message": "", "notebook_records": []},
-            config=config_lg,
+            config=_lg_config(session_id),
         )
         kps = final_state.get("knowledge_points", [])
         idx = final_state.get("current_index", 0)
@@ -444,33 +147,27 @@ async def start_learning_lg(request: dict):
             "knowledge_point": kps[idx] if kps and idx < len(kps) else {},
         }
     except Exception as exc:
-        logger.error(f"LangGraph Guide start error: {exc}")
+        logger.error("start_learning error: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.post("/next/lg")
-async def next_knowledge_lg(request: dict):
-    """LangGraph-based next knowledge point."""
-    from src.agents.guide.lg_graph import get_guide_graph
-
-    session_id: str = request.get("session_id", "")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id is required")
-
-    graph = get_guide_graph()
-    config_lg = {"configurable": {"thread_id": session_id}}
+@router.post("/next")
+async def next_knowledge(request: NextKnowledgeRequest):
+    """Advance to the next knowledge point (or finish with a summary)."""
+    session_id = request.session_id
+    graph = _get_graph()
     try:
         final_state = await graph.ainvoke(
             {"action": "next", "user_message": "", "notebook_records": []},
-            config=config_lg,
+            config=_lg_config(session_id),
         )
         kps = final_state.get("knowledge_points", [])
         idx = final_state.get("current_index", 0)
         status = final_state.get("status", "learning")
+
         if status == "completed":
             notebook_name = final_state.get("notebook_name", "")
             summary = final_state.get("summary", "")
-            # Persist to shared history so it appears on the History page
             history_manager.add_entry(
                 activity_type=ActivityType.GUIDE,
                 title=notebook_name or "Guided Learning",
@@ -478,9 +175,9 @@ async def next_knowledge_lg(request: dict):
                     "notebook_name": notebook_name,
                     "knowledge_points": [
                         {
-                            "knowledge_title": kp.get("title", kp.get("knowledge_title", "")),
-                            "knowledge_summary": kp.get("summary", kp.get("knowledge_summary", "")),
-                            "user_difficulty": kp.get("difficulty", kp.get("user_difficulty", "")),
+                            "knowledge_title": kp.get("knowledge_title", ""),
+                            "knowledge_summary": kp.get("knowledge_summary", ""),
+                            "user_difficulty": kp.get("user_difficulty", ""),
                         }
                         for kp in kps
                     ],
@@ -494,9 +191,10 @@ async def next_knowledge_lg(request: dict):
                 "session_id": session_id,
                 "status": "completed",
                 "summary": summary,
-                "message": "🎉 Congratulations on completing all knowledge points!",
+                "message": "Congratulations on completing all knowledge points!",
                 "progress": 100,
             }
+
         return {
             "success": True,
             "session_id": session_id,
@@ -508,53 +206,235 @@ async def next_knowledge_lg(request: dict):
             "message": f"Moving to knowledge point {idx + 1}/{len(kps)}",
         }
     except Exception as exc:
-        logger.error(f"LangGraph Guide next error: {exc}")
+        logger.error("next_knowledge error: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.post("/chat/lg")
-async def chat_lg(request: ChatRequest):
-    """LangGraph-based chat."""
-    from src.agents.guide.lg_graph import get_guide_graph
-
-    graph = get_guide_graph()
-    config_lg = {"configurable": {"thread_id": request.session_id}}
+@router.post("/chat")
+async def chat(request: ChatRequest):
+    """Answer a user question about the current knowledge point."""
+    graph = _get_graph()
     try:
         final_state = await graph.ainvoke(
             {"action": "chat", "user_message": request.message, "notebook_records": []},
-            config=config_lg,
+            config=_lg_config(request.session_id),
         )
-        # Last two messages are the new user+assistant pair
         history = final_state.get("chat_history", [])
         answer = history[-1]["content"] if history else ""
         return {"success": True, "session_id": request.session_id, "answer": answer}
     except Exception as exc:
-        logger.error(f"LangGraph Guide chat error: {exc}")
+        logger.error("chat error: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.post("/fix_html/lg")
-async def fix_html_lg(request: dict):
-    """LangGraph-based HTML fix."""
-    from src.agents.guide.lg_graph import get_guide_graph
-
-    session_id: str = request.get("session_id", "")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id is required")
-
-    graph = get_guide_graph()
-    config_lg = {"configurable": {"thread_id": session_id}}
+@router.post("/fix_html")
+async def fix_html(request: FixHtmlRequest):
+    """Regenerate the current HTML page after a reported bug."""
+    graph = _get_graph()
     try:
         final_state = await graph.ainvoke(
-            {"action": "fix_html", "user_message": request.get("bug_description", ""),
-             "notebook_records": []},
-            config=config_lg,
+            {
+                "action": "fix_html",
+                "user_message": request.bug_description,
+                "notebook_records": [],
+            },
+            config=_lg_config(request.session_id),
         )
         return {
             "success": True,
-            "session_id": session_id,
+            "session_id": request.session_id,
             "html": final_state.get("current_html", ""),
         }
     except Exception as exc:
-        logger.error(f"LangGraph Guide fix_html error: {exc}")
+        logger.error("fix_html error: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/session/{session_id}")
+async def get_session(session_id: str):
+    """
+    Read the current session state from the LangGraph MemorySaver checkpointer.
+    """
+    from src.agents.guide.lg_graph import get_guide_graph
+    try:
+        graph = get_guide_graph()
+        snapshot = await graph.aget_state({"configurable": {"thread_id": session_id}})
+        if not snapshot or not snapshot.values:
+            raise HTTPException(status_code=404, detail="Session not found")
+        state = snapshot.values
+        return {
+            "session_id": session_id,
+            "status": state.get("status", ""),
+            "current_index": state.get("current_index", 0),
+            "knowledge_points": state.get("knowledge_points", []),
+            "chat_history": state.get("chat_history", []),
+            "summary": state.get("summary", ""),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("get_session error: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/session/{session_id}/html")
+async def get_current_html(session_id: str):
+    """Read the current HTML page from the LangGraph MemorySaver checkpointer."""
+    from src.agents.guide.lg_graph import get_guide_graph
+    try:
+        graph = get_guide_graph()
+        snapshot = await graph.aget_state({"configurable": {"thread_id": session_id}})
+        if not snapshot or not snapshot.values:
+            raise HTTPException(status_code=404, detail="Session not found")
+        html = snapshot.values.get("current_html", "")
+        if not html:
+            raise HTTPException(status_code=404, detail="No HTML content yet")
+        return {"html": html}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("get_current_html error: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# === WebSocket Endpoint ===
+
+
+@router.websocket("/ws/{session_id}")
+async def websocket_guide(websocket: WebSocket, session_id: str):
+    """
+    WebSocket endpoint for real-time interaction — backed by LangGraph.
+
+    Message types:
+    - "start"     → generate first HTML page
+    - "next"      → advance to next knowledge point
+    - "chat"      → answer a question (send "message" field)
+    - "fix_html"  → regenerate HTML (send "bug_description" field)
+    - "get_session" → return current session state
+    """
+    await websocket.accept()
+
+    graph = _get_graph()
+
+    try:
+        # Verify session exists
+        snapshot = await graph.aget_state(_lg_config(session_id))
+        if not snapshot or not snapshot.values:
+            await websocket.send_json({"type": "error", "content": "Session not found"})
+            await websocket.close()
+            return
+
+        await websocket.send_json({"type": "session_info", "data": snapshot.values})
+
+        while True:
+            try:
+                data = await websocket.receive_json()
+                msg_type = data.get("type", "")
+
+                if msg_type == "start":
+                    final_state = await graph.ainvoke(
+                        {"action": "start", "user_message": "", "notebook_records": []},
+                        config=_lg_config(session_id),
+                    )
+                    kps = final_state.get("knowledge_points", [])
+                    idx = final_state.get("current_index", 0)
+                    await websocket.send_json({
+                        "type": "start_result",
+                        "data": {
+                            "success": True,
+                            "html": final_state.get("current_html", ""),
+                            "current_index": idx,
+                            "knowledge_point": kps[idx] if kps and idx < len(kps) else {},
+                        },
+                    })
+
+                elif msg_type == "next":
+                    final_state = await graph.ainvoke(
+                        {"action": "next", "user_message": "", "notebook_records": []},
+                        config=_lg_config(session_id),
+                    )
+                    status = final_state.get("status", "learning")
+                    if status == "completed":
+                        await websocket.send_json({
+                            "type": "next_result",
+                            "data": {
+                                "success": True,
+                                "status": "completed",
+                                "summary": final_state.get("summary", ""),
+                            },
+                        })
+                    else:
+                        kps = final_state.get("knowledge_points", [])
+                        idx = final_state.get("current_index", 0)
+                        await websocket.send_json({
+                            "type": "next_result",
+                            "data": {
+                                "success": True,
+                                "html": final_state.get("current_html", ""),
+                                "current_index": idx,
+                                "knowledge_point": kps[idx] if kps and idx < len(kps) else {},
+                            },
+                        })
+
+                elif msg_type == "chat":
+                    message = data.get("message", "")
+                    if message:
+                        final_state = await graph.ainvoke(
+                            {"action": "chat", "user_message": message, "notebook_records": []},
+                            config=_lg_config(session_id),
+                        )
+                        history = final_state.get("chat_history", [])
+                        answer = history[-1]["content"] if history else ""
+                        await websocket.send_json({
+                            "type": "chat_result",
+                            "data": {"success": True, "answer": answer},
+                        })
+
+                elif msg_type == "fix_html":
+                    bug_desc = data.get("bug_description", "")
+                    final_state = await graph.ainvoke(
+                        {
+                            "action": "fix_html",
+                            "user_message": bug_desc,
+                            "notebook_records": [],
+                        },
+                        config=_lg_config(session_id),
+                    )
+                    await websocket.send_json({
+                        "type": "fix_result",
+                        "data": {
+                            "success": True,
+                            "html": final_state.get("current_html", ""),
+                        },
+                    })
+
+                elif msg_type == "get_session":
+                    snap = await graph.aget_state(_lg_config(session_id))
+                    await websocket.send_json({
+                        "type": "session_info",
+                        "data": snap.values if snap else {},
+                    })
+
+                else:
+                    await websocket.send_json(
+                        {"type": "error", "content": f"Unknown message type: {msg_type}"}
+                    )
+
+            except WebSocketDisconnect:
+                logger.debug("WebSocket disconnected: %s", session_id)
+                break
+            except Exception as exc:
+                logger.error("WebSocket error: %s", exc)
+                await websocket.send_json({"type": "error", "content": str(exc)})
+
+    except Exception as exc:
+        logger.error("WebSocket connection error: %s", exc)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+@router.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "guide"}
