@@ -1,24 +1,11 @@
 """
-Chat Module - Lightweight conversational AI with session management.
-
-This module provides:
-- ChatAgent: Multi-turn conversational agent with RAG/Web Search support
-- SessionManager: Chat session persistence and management
+Chat Module — LangGraph-based conversational AI with session management.
 
 Usage:
-    from src.agents.chat import ChatAgent, SessionManager
-
-    agent = ChatAgent(language="en")
-    response = await agent.process(
-        message="What is machine learning?",
-        history=[],
-        kb_name="ai_textbook",
-        enable_rag=True,
-        enable_web_search=False
-    )
+    from src.agents.chat.lg_graph import get_chat_graph
+    from src.agents.chat.session_manager import SessionManager
 """
 
-from .chat_agent import ChatAgent
 from .session_manager import SessionManager
 
-__all__ = ["ChatAgent", "SessionManager"]
+__all__ = ["SessionManager"]

@@ -5,9 +5,7 @@ Chat API Router
 WebSocket endpoint for lightweight chat with session management.
 REST endpoints for session operations.
 
-LangGraph endpoint:
-  /chat/lg  — LangGraph-based implementation for parallel testing.
-              Once validated, this will replace /chat.
+Powered by LangGraph + MemorySaver checkpointer for per-session history.
 """
 
 from pathlib import Path
@@ -19,13 +17,11 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 _project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(_project_root))
 
-from src.agents.chat import ChatAgent, SessionManager
+from src.agents.chat.session_manager import SessionManager
 from src.logging import get_logger
 from src.services.config import load_config_with_main
-from src.services.llm.config import get_llm_config
 from src.services.settings.interface_settings import get_ui_language
 
-# Initialize logger
 project_root = Path(__file__).parent.parent.parent.parent
 config = load_config_with_main("solve_config.yaml", project_root)
 log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
@@ -33,7 +29,6 @@ logger = get_logger("ChatAPI", level="INFO", log_dir=log_dir)
 
 router = APIRouter()
 
-# Initialize session manager
 session_manager = SessionManager()
 
 
@@ -44,29 +39,13 @@ session_manager = SessionManager()
 
 @router.get("/chat/sessions")
 async def list_sessions(limit: int = 20):
-    """
-    List recent chat sessions.
-
-    Args:
-        limit: Maximum number of sessions to return
-
-    Returns:
-        List of session summaries
-    """
+    """List recent chat sessions."""
     return session_manager.list_sessions(limit=limit, include_messages=False)
 
 
 @router.get("/chat/sessions/{session_id}")
 async def get_session(session_id: str):
-    """
-    Get a specific chat session with full message history.
-
-    Args:
-        session_id: Session identifier
-
-    Returns:
-        Complete session data including messages
-    """
+    """Get a specific chat session with full message history."""
     session = session_manager.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -75,15 +54,7 @@ async def get_session(session_id: str):
 
 @router.delete("/chat/sessions/{session_id}")
 async def delete_session(session_id: str):
-    """
-    Delete a chat session.
-
-    Args:
-        session_id: Session identifier
-
-    Returns:
-        Success message
-    """
+    """Delete a chat session."""
     if session_manager.delete_session(session_id):
         return {"status": "deleted", "session_id": session_id}
     raise HTTPException(status_code=404, detail="Session not found")
@@ -97,7 +68,7 @@ async def delete_session(session_id: str):
 @router.websocket("/chat")
 async def websocket_chat(websocket: WebSocket):
     """
-    WebSocket endpoint for chat — powered by LangGraph 1.0.9.
+    WebSocket endpoint for chat — powered by LangGraph.
 
     Message format:
     {
@@ -131,12 +102,13 @@ async def websocket_chat(websocket: WebSocket):
             kb_name: str = data.get("kb_name", "") or ""
             enable_rag: bool = bool(data.get("enable_rag", False))
             enable_web_search: bool = bool(data.get("enable_web_search", False))
-            language: str = get_ui_language(
+            language: str = data.get("language") or get_ui_language(
                 default=config.get("system", {}).get("language", "en")
             )
 
             logger.info(
-                f"Chat request: session={session_id}, message={message[:50]!r}, rag={enable_rag}, web={enable_web_search}"
+                f"Chat request: session={session_id}, message={message[:50]!r}, "
+                f"rag={enable_rag}, web={enable_web_search}"
             )
 
             try:
@@ -146,7 +118,7 @@ async def websocket_chat(websocket: WebSocket):
 
                 await websocket.send_json({"type": "session", "session_id": session_id})
 
-                # Ensure session exists in SessionManager (create on first message)
+                # Create session in SessionManager on first message
                 if not session_manager.get_session(session_id):
                     import time as _time
                     now = _time.time()
@@ -165,7 +137,7 @@ async def websocket_chat(websocket: WebSocket):
                     }
                     sessions = session_manager._get_sessions()
                     sessions.insert(0, new_session)
-                    sessions = sessions[:100]  # Keep max 100 sessions
+                    sessions = sessions[:100]
                     session_manager._save_sessions(sessions)
 
                 graph = get_chat_graph()
@@ -192,9 +164,13 @@ async def websocket_chat(websocket: WebSocket):
 
                 msgs = final_state.get("messages", [])
                 last_content = msgs[-1].content if msgs else ""
-                await websocket.send_json({"type": "result", "content": last_content})
+                await websocket.send_json({
+                    "type": "result",
+                    "content": last_content,
+                    "session_id": session_id,
+                })
 
-                # Persist this turn to SessionManager (chat_sessions.json)
+                # Persist this turn to SessionManager
                 session_manager.add_message(session_id, role="user", content=message)
                 session_manager.add_message(
                     session_id,
@@ -217,113 +193,5 @@ async def websocket_chat(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
-        except Exception:
-            pass
-
-
-# =============================================================================
-# LangGraph WebSocket Endpoint (parallel testing — replaces /chat after validation)
-# =============================================================================
-
-
-@router.websocket("/chat/lg")
-async def websocket_chat_lg(websocket: WebSocket):
-    """
-    LangGraph-based Chat endpoint.
-
-    Drop-in replacement for /chat using LangGraph 1.0.9 + LangChain 1.2.x.
-    Message format is identical to /chat; use this endpoint for A/B testing
-    before cutting over.
-
-    Message format (same as /chat):
-    {
-        "message": str,              # User message
-        "session_id": str | null,    # Session ID (null → new UUID session)
-        "kb_name": str,              # Knowledge base name (for RAG)
-        "enable_rag": bool,          # Enable RAG retrieval
-        "enable_web_search": bool,   # Enable Web Search
-        "language": str | null       # UI language override (optional)
-    }
-    """
-    await websocket.accept()
-
-    try:
-        while True:
-            data = await websocket.receive_json()
-
-            message = data.get("message", "").strip()
-            if not message:
-                await websocket.send_json({"type": "error", "message": "Message is required"})
-                continue
-
-            session_id: str = data.get("session_id") or str(uuid.uuid4())
-            kb_name: str = data.get("kb_name", "") or ""
-            enable_rag: bool = bool(data.get("enable_rag", False))
-            enable_web_search: bool = bool(data.get("enable_web_search", False))
-            language: str = data.get("language") or get_ui_language(
-                default=config.get("system", {}).get("language", "en")
-            )
-
-            logger.info(
-                f"LangGraph Chat request: session={session_id}, message={message[:50]!r}, rag={enable_rag}, web={enable_web_search}"
-            )
-
-            try:
-                from langchain_core.messages import HumanMessage
-                from src.agents.chat.lg_graph import get_chat_graph
-                from src.api.utils.langgraph_ws_adapter import stream_graph_to_websocket
-
-                # Notify frontend of the active session ID
-                await websocket.send_json({"type": "session", "session_id": session_id})
-
-                graph = get_chat_graph()
-                config_lg = {"configurable": {"thread_id": session_id}}
-                initial_state = {
-                    "messages": [HumanMessage(content=message)],
-                    "kb_name": kb_name,
-                    "enable_rag": enable_rag,
-                    "enable_web_search": enable_web_search,
-                    "language": language,
-                    "session_id": session_id,
-                }
-
-                final_state = await stream_graph_to_websocket(
-                    graph=graph,
-                    initial_state=initial_state,
-                    websocket=websocket,
-                    config=config_lg,
-                )
-
-                # Send sources if present
-                sources = final_state.get("sources", {})
-                if sources.get("rag") or sources.get("web"):
-                    await websocket.send_json({"type": "sources", **sources})
-
-                # Send final result message
-                msgs = final_state.get("messages", [])
-                last_content = msgs[-1].content if msgs else ""
-                await websocket.send_json({
-                    "type": "result",
-                    "content": last_content,
-                    "session_id": session_id,
-                })
-
-                logger.info(
-                    f"LangGraph Chat completed: session={session_id}, {len(str(last_content))} chars"
-                )
-
-            except Exception as exc:
-                logger.error(f"LangGraph Chat processing error: {exc}")
-                try:
-                    await websocket.send_json({"type": "error", "message": str(exc)})
-                except Exception:
-                    pass
-
-    except WebSocketDisconnect:
-        logger.debug("Client disconnected from LangGraph chat")
-    except Exception as exc:
-        logger.error(f"LangGraph Chat WebSocket error: {exc}")
-        try:
-            await websocket.send_json({"type": "error", "message": str(exc)})
         except Exception:
             pass
