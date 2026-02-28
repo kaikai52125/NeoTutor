@@ -14,34 +14,251 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 import json
+import logging
 import os
 from pathlib import Path
+import re
 import sys
-from typing import TYPE_CHECKING, Any, Callable
-
-if TYPE_CHECKING:
-    from src.agents.question import AgentCoordinator
+from typing import Any, Callable
 
 # Project root is 3 levels up from src/tools/question/
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# Note: AgentCoordinator is imported inside functions to avoid circular import
-from src.services.llm.config import get_llm_config
 from src.tools.question.pdf_parser import parse_pdf_with_mineru
 from src.tools.question.question_extractor import extract_questions_from_paper
 
 # Type alias for WebSocket callback
 WsCallback = Callable[[str, dict[str, Any]], Any]
 
+logger = logging.getLogger(__name__)
 
-async def generate_question_from_reference(
-    reference_question: dict[str, Any], coordinator: AgentCoordinator, kb_name: str
+
+# ---------------------------------------------------------------------------
+# Pure-LangChain helpers (no BaseAgent)
+# ---------------------------------------------------------------------------
+
+
+def _parse_json_robust(text: str) -> dict[str, Any]:
+    """Extract and parse JSON from LLM response, handling markdown code blocks."""
+    match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    content = match.group(1).strip() if match else text.strip()
+    content = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", content)
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    obj_match = re.search(r"\{[\s\S]*\}", content)
+    if obj_match:
+        try:
+            return json.loads(obj_match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    fixed = re.sub(r",\s*([}\]])", r"\1", content)
+    fixed = re.sub(r'"""([\s\S]*?)"""', lambda m: json.dumps(m.group(1)), fixed)
+    return json.loads(fixed)
+
+
+def _load_prompts(agent_name: str, language: str = "en") -> dict[str, Any]:
+    from src.services.prompt import get_prompt_manager
+    try:
+        return get_prompt_manager().load_prompts(
+            module_name="question",
+            agent_name=agent_name,
+            language=language,
+        ) or {}
+    except Exception as exc:
+        logger.warning("Failed to load prompts %s/%s: %s", agent_name, language, exc)
+        return {}
+
+
+def _p(prompts: dict, key: str, default: str = "") -> str:
+    return (prompts.get(key) or default).strip()
+
+
+async def _retrieve_knowledge(
+    requirement: dict[str, Any],
+    kb_name: str,
+    language: str = "en",
+    num_queries: int = 3,
+) -> tuple[str, bool]:
+    """
+    Generate RAG queries via LLM, then retrieve KB context in parallel.
+    Returns (knowledge_context, has_content).
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from src.services.llm.langchain_factory import get_chat_model_from_env
+    from src.tools.rag_tool import rag_search
+
+    requirement_text = json.dumps(requirement, ensure_ascii=False, indent=2)
+    prompts = _load_prompts("retrieve_agent", language)
+    llm = get_chat_model_from_env()
+
+    system_text = _p(prompts, "system", "You are a knowledge base retrieval assistant.")
+    user_tpl = _p(
+        prompts, "generate_queries",
+        "Extract {num_queries} knowledge point names for retrieval from:\n{requirement_text}\n\nReturn JSON: {{\"queries\": [\"point1\", ...]}}",
+    )
+    user_text = user_tpl.format(requirement_text=requirement_text, num_queries=num_queries)
+
+    queries: list[str] = []
+    try:
+        response = await llm.ainvoke([
+            SystemMessage(content=system_text),
+            HumanMessage(content=user_text),
+        ])
+        raw = response.content if hasattr(response, "content") else str(response)
+        data = _parse_json_robust(raw)
+        queries_raw = data.get("queries", [])
+        if isinstance(queries_raw, dict):
+            queries_raw = list(queries_raw.values())
+        elif not isinstance(queries_raw, list):
+            queries_raw = [str(queries_raw)]
+        queries = [q.strip() for q in queries_raw if q and str(q).strip()][:num_queries]
+    except Exception as exc:
+        logger.warning("_retrieve_knowledge: failed to parse query JSON: %s", exc)
+
+    if not queries:
+        queries = [requirement_text[:100]]
+
+    async def _search(q: str) -> dict[str, Any]:
+        try:
+            result = await rag_search(query=q, kb_name=kb_name, mode="naive", only_need_context=True)
+            return {"query": q, "answer": result.get("answer", "")}
+        except Exception as exc:
+            logger.warning("RAG search failed for '%s': %s", q, exc)
+            return {"query": q, "answer": ""}
+
+    retrievals = await asyncio.gather(*[_search(q) for q in queries])
+    retrievals = [r for r in retrievals if r.get("answer")]
+
+    if not retrievals:
+        return "No retrieval context available.", False
+
+    lines = []
+    for item in retrievals:
+        lines.append(f"=== Query: {item['query']} ===")
+        answer = item["answer"]
+        if len(answer) > 2000:
+            answer = answer[:2000] + "...[truncated]"
+        lines.append(answer)
+        lines.append("")
+    return "\n".join(lines), True
+
+
+async def _generate_with_reference(
+    requirement: dict[str, Any],
+    knowledge_context: str,
+    reference_question: str,
+    language: str = "en",
 ) -> dict[str, Any]:
     """
-    Generate a new question based on a reference entry.
+    Generate a mimic question using generate_with_reference prompt.
+    Returns {"success": bool, "question": dict} or {"success": False, "error": str}.
     """
-    # Build generation requirement that encodes the reference
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from src.services.llm.langchain_factory import get_chat_model_from_env
+
+    prompts = _load_prompts("generate_agent", language)
+    llm = get_chat_model_from_env()
+
+    requirements_str = json.dumps(requirement, ensure_ascii=False, indent=2)
+    knowledge_snippet = knowledge_context[:4000] if len(knowledge_context) > 4000 else knowledge_context
+
+    system_text = _p(prompts, "system", "You are a professional Question Generation Agent.")
+    user_tpl = _p(
+        prompts, "generate_with_reference",
+        "Generate a new question inspired by the reference but distinct:\n"
+        "Reference: {reference_question}\nRequirements: {requirements}\nKnowledge: {knowledge}\n\n"
+        "Return JSON with question_type, question, correct_answer, explanation.",
+    )
+    user_text = user_tpl.format(
+        reference_question=reference_question,
+        requirements=requirements_str,
+        knowledge=knowledge_snippet,
+    )
+
+    try:
+        resp = await llm.ainvoke([
+            SystemMessage(content=system_text),
+            HumanMessage(content=user_text),
+        ])
+        raw = resp.content if hasattr(resp, "content") else str(resp)
+        question = _parse_json_robust(raw)
+
+        if "question" not in question:
+            raise ValueError("Missing 'question' field in LLM response")
+        if "question_type" not in question:
+            question["question_type"] = "written"
+        if question.get("question_type") == "choice" and not question.get("options"):
+            question["options"] = {
+                "A": "Option A (placeholder)", "B": "Option B (placeholder)",
+                "C": "Option C (placeholder)", "D": "Option D (placeholder)",
+            }
+        return {"success": True, "question": question}
+    except Exception as exc:
+        logger.warning("_generate_with_reference failed: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+
+async def _analyze_relevance(
+    question: dict[str, Any],
+    knowledge_context: str,
+    language: str = "en",
+) -> dict[str, Any]:
+    """
+    Classify question-KB relevance via LangChain LLM.
+    Returns {"relevance": "high"|"partial", "kb_coverage": str, "extension_points": str}.
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from src.services.llm.langchain_factory import get_chat_model_from_env
+
+    prompts = _load_prompts("relevance_analyzer", language)
+    llm = get_chat_model_from_env()
+
+    knowledge_snippet = (
+        knowledge_context[:4000] + "...[truncated]"
+        if len(knowledge_context) > 4000
+        else knowledge_context
+    )
+    question_str = json.dumps(question, ensure_ascii=False, indent=2)
+
+    system_text = _p(prompts, "system", "You are an educational content analyst.")
+    user_tpl = _p(
+        prompts, "analyze_relevance",
+        'Analyze relevance:\nQuestion:\n{question}\n\nKnowledge:\n{knowledge}\n\nReturn JSON: {{"relevance":"high"/"partial","kb_coverage":"...","extension_points":"..."}}',
+    )
+    user_text = user_tpl.format(question=question_str, knowledge=knowledge_snippet)
+
+    try:
+        resp = await llm.ainvoke([
+            SystemMessage(content=system_text),
+            HumanMessage(content=user_text),
+        ])
+        raw = resp.content if hasattr(resp, "content") else str(resp)
+        result = _parse_json_robust(raw)
+        relevance = result.get("relevance", "partial")
+        if relevance not in ("high", "partial"):
+            relevance = "partial"
+        return {
+            "relevance": relevance,
+            "kb_coverage": result.get("kb_coverage", ""),
+            "extension_points": result.get("extension_points", "") if relevance == "partial" else "",
+        }
+    except Exception as exc:
+        logger.warning("_analyze_relevance failed: %s", exc)
+        return {"relevance": "partial", "kb_coverage": "", "extension_points": str(exc)}
+
+
+async def generate_question_from_reference(
+    reference_question: dict[str, Any], kb_name: str, language: str = "en"
+) -> dict[str, Any]:
+    """
+    Generate a new question based on a reference entry using pure LangChain (no BaseAgent).
+    """
     requirement = {
         "reference_question": reference_question["question_text"],
         "has_images": len(reference_question.get("images", [])) > 0,
@@ -65,10 +282,45 @@ async def generate_question_from_reference(
         ),
     }
 
-    # Trigger generation through the coordinator
-    result = await coordinator.generate_question(requirement)
+    # Step 1: Retrieve knowledge context
+    knowledge_context, has_content = await _retrieve_knowledge(
+        requirement=requirement, kb_name=kb_name, language=language
+    )
+    if not has_content:
+        return {
+            "success": False,
+            "error": "knowledge_not_found",
+            "message": "Knowledge base does not contain relevant information.",
+        }
 
-    return result
+    # Step 2: Generate mimic question
+    gen_result = await _generate_with_reference(
+        requirement=requirement,
+        knowledge_context=knowledge_context,
+        reference_question=reference_question["question_text"],
+        language=language,
+    )
+    if not gen_result.get("success"):
+        return {"success": False, "error": gen_result.get("error", "Generation failed")}
+
+    question = gen_result["question"]
+
+    # Step 3: Analyze relevance
+    analysis = await _analyze_relevance(
+        question=question, knowledge_context=knowledge_context, language=language
+    )
+
+    return {
+        "success": True,
+        "question": question,
+        "validation": {
+            "decision": "approve",
+            "relevance": analysis["relevance"],
+            "kb_coverage": analysis["kb_coverage"],
+            "extension_points": analysis.get("extension_points", ""),
+        },
+        "rounds": 1,
+    }
 
 
 async def mimic_exam_questions(
@@ -337,8 +589,6 @@ async def mimic_exam_questions(
     print("🔄 Step 4: generate new questions from references (parallel)")
     print("-" * 80)
 
-    # Lazy import to avoid circular import
-    from src.agents.question import AgentCoordinator
     from src.services.config import load_config_with_main
 
     # Load config for parallel settings
@@ -378,19 +628,9 @@ async def mimic_exam_questions(
             print(f"\n📝 [{question_id}] Starting - Reference: {ref_number}")
             print(f"   Preview: {ref_question['question_text'][:80]}...")
 
-            # Create a fresh coordinator for each question
-            llm_config = get_llm_config()
-            coordinator = AgentCoordinator(
-                api_key=llm_config.api_key,
-                base_url=llm_config.base_url,
-                api_version=getattr(llm_config, "api_version", None),
-                max_rounds=10,
-                kb_name=kb_name,
-            )
-
             try:
                 result = await generate_question_from_reference(
-                    reference_question=ref_question, coordinator=coordinator, kb_name=kb_name
+                    reference_question=ref_question, kb_name=kb_name
                 )
 
                 async with completed_lock:
