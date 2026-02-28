@@ -8,13 +8,10 @@ from typing import Any
 from fastapi import APIRouter, WebSocket
 from pydantic import BaseModel
 
-from src.agents.research.agents import RephraseAgent
-from src.agents.research.research_pipeline import ResearchPipeline
 from src.api.utils.history import ActivityType, history_manager
 from src.api.utils.task_id_manager import TaskIDManager
 from src.logging import get_logger
 from src.services.config import load_config_with_main
-from src.services.llm import get_llm_config
 from src.services.settings.interface_settings import get_ui_language
 
 # Force stdout to use utf-8 to prevent encoding errors with emojis on Windows
@@ -46,33 +43,15 @@ class OptimizeRequest(BaseModel):
 @router.post("/optimize_topic")
 async def optimize_topic(request: OptimizeRequest):
     try:
-        config = load_config()
-        config.setdefault("system", {})
-        config["system"]["language"] = get_ui_language(
-            default=config.get("system", {}).get("language", "en")
-        )
+        cfg = load_config()
+        cfg.setdefault("system", {})
+        language = get_ui_language(default=cfg.get("system", {}).get("language", "en"))
+        cfg["system"]["language"] = language
 
-        # Inject API keys
-        try:
-            llm_config = get_llm_config()
-            api_key = llm_config.api_key
-            base_url = llm_config.base_url
-        except Exception as e:
-            return {"error": f"LLM config error: {e!s}"}
+        from src.agents.research.lg_nodes import _rephrase
 
-        # Init Agent
-        agent = RephraseAgent(config=config, api_key=api_key, base_url=base_url)
-
-        # Process
-        # If iteration > 0, topic is treated as feedback
-        if request.iteration == 0:
-            result = await agent.process(request.topic, iteration=0)
-        else:
-            result = await agent.process(
-                request.topic, iteration=request.iteration, previous_result=request.previous_result
-            )
-
-        return result
+        optimized_topic = await _rephrase(request.topic, language, cfg)
+        return {"topic": optimized_topic, "iteration": request.iteration}
 
     except Exception as e:
         traceback.print_exc()

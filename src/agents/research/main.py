@@ -16,9 +16,6 @@ import sys
 from dotenv import load_dotenv
 import yaml
 
-from src.agents.research.research_pipeline import ResearchPipeline
-from src.services.llm import get_llm_config
-
 
 def load_config(config_path: str = None, preset: str = None) -> dict:
     """
@@ -126,17 +123,6 @@ Examples:
     # Load environment variables
     load_dotenv()
 
-    # Check API configuration
-    try:
-        llm_config = get_llm_config()
-    except ValueError as e:
-        print(f"✗ Error: {e}")
-        print("Please configure in .env or DeepTutor.env file:")
-        print("  LLM_MODEL=gpt-4o")
-        print("  LLM_API_KEY=your_api_key_here")
-        print("  LLM_HOST=https://api.openai.com/v1")
-        sys.exit(1)
-
     # Load configuration
     try:
         config = load_config(args.config, args.preset)
@@ -152,21 +138,45 @@ Examples:
     # Display configuration
     display_config(config)
 
-    # Create research pipeline
-    pipeline = ResearchPipeline(
-        config=config, api_key=llm_config.api_key, base_url=llm_config.base_url
-    )
+    # Execute research via LangGraph pipeline
+    import uuid as _uuid
+    from src.agents.research.lg_graph import get_research_graph
 
-    # Execute research
+    research_id = str(_uuid.uuid4())
+    language = config.get("system", {}).get("language", "en")
+    planning_cfg = config.get("planning", {})
+    researching_cfg = config.get("researching", {})
+    initial_subtopics = planning_cfg.get("decompose", {}).get("initial_subtopics", 5)
+    max_iterations = researching_cfg.get("max_iterations", 5)
+
+    graph = get_research_graph()
+    initial_state = {
+        "topic": args.topic,
+        "kb_name": config.get("rag", {}).get("kb_name", "ai_textbook"),
+        "research_id": research_id,
+        "language": language,
+        "initial_subtopics": initial_subtopics,
+        "max_iterations": max_iterations,
+        "plan_mode": "standard",
+        "skip_rephrase": False,
+        "enabled_tools": ["RAG"],
+        "optimized_topic": "",
+        "topic_blocks": [],
+        "citations": [],
+        "final_report": "",
+        "report_path": "",
+        "streaming_events": [],
+    }
+
     try:
-        result = await pipeline.run(topic=args.topic)
-
+        final_state = await graph.ainvoke(initial_state)
+        report_path = final_state.get("report_path", "")
         print("\n" + "=" * 70)
         print("✓ Research completed!")
         print("=" * 70)
-        print(f"Research ID: {result['research_id']}")
-        print(f"Topic: {result['topic']}")
-        print(f"Final Report: {result['final_report_path']}")
+        print(f"Research ID: {research_id}")
+        print(f"Topic: {args.topic}")
+        print(f"Final Report: {report_path}")
         print("=" * 70 + "\n")
 
     except KeyboardInterrupt:
