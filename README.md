@@ -1,1565 +1,523 @@
-<div align="center">
+# 🚀 NeoTutor
 
-<img src="assets/logo-ver2.png" alt="DeepTutor Logo" width="150" style="border-radius: 15px;">
+基于 DeepTutor 理念重构的个人专属 AI 导师 Agent。本项目完全抛弃了原有的执行框架，底层采用 LangChain 与 LangGraph 进行彻底重写。通过构建基于图（Graph）的认知工作流与健壮的状态管理（State Management），实现了更具韧性的多智能体协同、反思纠错机制与 RAG 检索链路，专为打造高度定制化的 1v1 私人学习与效率助理。
 
-# DeepTutor: AI-Powered Personalized Learning Assistant
+**技术栈**：Python 3.10+ · FastAPI · LangChain · LangGraph · Next.js 16 · React 19 · TailwindCSS
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![TailwindCSS](https://img.shields.io/badge/Tailwind-3.4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
+------
 
-<p align="center">
-  <a href="https://discord.gg/eRsjPgMU4t"><img src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
-  &nbsp;&nbsp;
-  <a href="./Communication.md"><img src="https://img.shields.io/badge/Feishu-Join_Group-00D4AA?style=for-the-badge&logo=feishu&logoColor=white" alt="Feishu"></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/HKUDS/DeepTutor/issues/78"><img src="https://img.shields.io/badge/WeChat-Join_Group-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>
-</p>
+## 🏗️ 核心架构
 
+### 重构原则
 
+所有智能体模块均已重构为纯 LangGraph 图结构，彻底移除原有 `BaseAgent` 继承体系，改为直接使用 LangChain 工厂函数。
 
-[**Quick Start**](#quick-start) · [**Core Modules**](#core-modules) · [**FAQ**](#faq)
+**每个模块三件套：**
 
-[🇨🇳 中文](assets/README/README_CN.md) · [🇯🇵 日本語](assets/README/README_JA.md) · [🇪🇸 Español](assets/README/README_ES.md) · [🇫🇷 Français](assets/README/README_FR.md) · [🇸🇦 العربية](assets/README/README_AR.md) · [🇷🇺 Русский](assets/README/README_RU.md) · [🇮🇳 हिन्दी](assets/README/README_HI.md) · [🇵🇹 Português](assets/README/README_PT.md)
+- `lg_graph.py` —— 定义节点拓扑与条件边（含 Send API 并行分发）
+- `lg_nodes.py` —— 节点函数，内联所有 LLM 调用逻辑
+- `lg_state.py` —— 基于 `TypedDict` 的强类型状态定义
 
-</div>
+**底层调用机制：**
 
-<div align="center">
+- **LLM 调用**：`get_chat_model_from_env()` 工厂函数
+- **Prompt 加载**：`get_prompt_manager().load_prompts(module, agent, language)`
+- **状态传递**：LangGraph 原生 State + Checkpointer
 
-📚 **Massive Document Knowledge Q&A** &nbsp;•&nbsp; 🎨 **Interactive Learning Visualization**<br>
-🎯 **Knowledge Reinforcement** &nbsp;•&nbsp; 🔍 **Deep Research & Idea Generation**
+------
 
-</div>
+## 🧩 七大功能模块
 
----
-### 📰 News
+### 1. 🔍 Solve — 深度问题求解
 
-> **[2026.1.1]** Happy New Year! Join our [Discord Community](https://discord.gg/eRsjPgMU4t), [Wechat Community](https://github.com/HKUDS/DeepTutor/issues/78), or [Discussions](https://github.com/HKUDS/DeepTutor/discussions) - shape the future of DeepTutor! 💬
+用于解决需要多步骤推理的复杂问题，配合知识库检索与工具调用。
 
-> **[2025.12.30]** Visit our [Official Website](https://hkuds.github.io/DeepTutor/) for more details!
+**双循环图结构：**
 
-> **[2025.12.29]** DeepTutor is now live! ✨
+代码段
 
-### 📦 Releases
-
-> **[2026.1.23]** Release [v0.6.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.6.0) - Frontend session persistence, full Chinese support, Docker deployment updates, and minor bug fixes -- Thanks for all the feedback!
-
-<details>
-<summary>History releases</summary>
-
-> **[2026.1.18]** Release [v0.5.2](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.1) - Enhance RAG pipeline with Docling support and improve CI/CD workflows with several minor bugs fixed -- Thanks to all the feedbacks!
-
-
-> **[2026.1.15]** Release [v0.5.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.0) - Unified LLM & Embedding services, RAG pipeline selection, and major enhancements to Home, History, QuestionGen & Settings modules -- Thanks to all the contributors!
-
-> **[2026.1.9]** Release [v0.4.1](https://github.com/HKUDS/DeepTutor/releases/tag/v0.4.1) with LLM Provider system overhaul, Question Generation robustness improvements, and codebase cleanup - Thanks to all the contributors!
-
-> **[2026.1.9]** Release [v0.4.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.4.0) with new code structure, multiple llm & embeddings support - Thanks to all the contributors!
-
-> **[2026.1.5]** [v0.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.3.0) - Unified PromptManager architecture, CI/CD automation & pre-built Docker images on GHCR
-
-> **[2026.1.2]** [v0.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.2.0) - Docker deployment, Next.js 16 & React 19 upgrade, WebSocket security & critical vulnerability fixes
-
-</details>
-
----
-
-## Key Features of DeepTutor
-
-### 📚 Massive Document Knowledge Q&A
-• **Smart Knowledge Base**: Upload textbooks, research papers, technical manuals, and domain-specific documents. Build a comprehensive AI-powered knowledge repository for instant access.<br>
-• **Multi-Agent Problem Solving**: Dual-loop reasoning architecture with RAG, web search, and code execution -- delivering step-by-step solutions with precise citations.
-
-### 🎨 Interactive Learning Visualization
-• **Knowledge Simplification & Explanations**: Transform complex concepts, knowledge, and algorithms into easy-to-understand visual aids, detailed step-by-step breakdowns, and engaging interactive demonstrations.<br>
-• **Personalized Q&A**: Context-aware conversations that adapt to your learning progress, with interactive pages and session-based knowledge tracking.
-
-### 🎯 Knowledge Reinforcement with Practice Exercise Generator
-• **Intelligent Exercise Creation**: Generate targeted quizzes, practice problems, and customized assessments tailored to your current knowledge level and specific learning objectives.<br>
-• **Authentic Exam Simulation**: Upload reference exams to generate practice questions that perfectly match the original style, format, and difficulty—giving you realistic preparation for the actual test.
-
-### 🔍 Deep Research & Idea Generation
-• **Comprehensive Research & Literature Review**: Conduct in-depth topic exploration with systematic analysis. Identify patterns, connect related concepts across disciplines, and synthesize existing research findings.<br>
-• **Novel Insight Discovery**: Generate structured learning materials and uncover knowledge gaps. Identify promising new research directions through intelligent cross-domain knowledge synthesis.
-
----
-
-<div align="center">
-  <img src="assets/figs/title_gradient.svg" alt="All-in-One Tutoring System" width="70%">
-</div>
-
-<!-- ━━━━━━━━━━━━━━━━ Core Learning Experience ━━━━━━━━━━━━━━━━ -->
-
-<table>
-<tr>
-<td width="50%" align="center" valign="top">
-
-<h3>📚 Massive Document Knowledge Q&A</h3>
-<a href="#problem-solving-agent">
-<img src="assets/gifs/solve.gif" width="100%">
-</a>
-<br>
-<sub>Multi-agent Problem Solving with Exact Citations</sub>
-
-</td>
-<td width="50%" align="center" valign="top">
-
-<h3>🎨 Interactive Learning Visualization</h3>
-<a href="#guided-learning">
-<img src="assets/gifs/guided-learning.gif" width="100%">
-</a>
-<br>
-<sub>Step-by-step Visual Explanations with Personal QAs.</sub>
-
-</td>
-</tr>
-</table>
-
-<!-- ━━━━━━━━━━━━━━━━ Practice & Reinforcement ━━━━━━━━━━━━━━━━ -->
-
-<h3 align="center">🎯 Knowledge Reinforcement</h3>
-
-<table>
-<tr>
-<td width="50%" valign="top" align="center">
-
-<a href="#question-generator">
-<img src="assets/gifs/question-1.gif" width="100%">
-</a>
-
-**Custom Questions**  
-<sub>Auto-Validated Practice Questions Generation</sub>
-
-</td>
-<td width="50%" valign="top" align="center">
-
-<a href="#question-generator">
-<img src="assets/gifs/question-2.gif" width="100%">
-</a>
-
-**Mimic Questions**  
-<sub>Clone Exam Style for Authentic Practice</sub>
-
-</td>
-</tr>
-</table>
-
-<!-- ━━━━━━━━━━━━━━━━ Research & Creation ━━━━━━━━━━━━━━━━ -->
-
-<h3 align="center">🔍 Deep Research & Idea Generation</h3>
-
-<table>
-<tr>
-<td width="33%" align="center">
-
-<a href="#deep-research">
-<img src="assets/gifs/deepresearch.gif" width="100%">
-</a>
-
-**Deep Research**  
-<sub>Knowledge Extension from Textbook with RAG, Web and Paper-search</sub>
-
-</td>
-<td width="33%" align="center">
-
-<a href="#idea-generation">
-<img src="assets/gifs/ideagen.gif" width="100%">
-</a>
-
-**Automated IdeaGen**  
-<sub>Brainstorming and Concept Synthesis with Dual-filter Workflow</sub>
-
-</td>
-<td width="33%" align="center">
-
-<a href="#co-writer">
-<img src="assets/gifs/co-writer.gif" width="100%">
-</a>
-
-**Interactive IdeaGen**  
-<sub>RAG and Web-search Powered Co-writer with Podcast Generation</sub>
-
-</td>
-</tr>
-</table>
-
-<!-- ━━━━━━━━━━━━━━━━ Knowledge Infrastructure ━━━━━━━━━━━━━━━━ -->
-
-<h3 align="center">🏗️ All-in-One Knowledge System</h3>
-
-<table>
-<tr>
-<td width="50%" align="center">
-
-<a href="#dashboard--knowledge-base-management">
-<img src="assets/gifs/knowledge_bases.png" width="100%">
-</a>
-
-**Personal Knowledge Base**  
-<sub>Build and Organize Your Own Knowledge Repository</sub>
-
-</td>
-<td width="50%" align="center">
-
-<a href="#notebook">
-<img src="assets/gifs/notebooks.png" width="100%">
-</a>
-
-**Personal Notebook**  
-<sub>Your Contextual Memory for Learning Sessions</sub>
-
-</td>
-</tr>
-</table>
-
-<p align="center">
-  <sub>🌙 Use DeepTutor in <b>Dark Mode</b>!</sub>
-</p>
-
----
-
-## 🏛️ DeepTutor's Framework
-
-<div align="center">
-<img src="assets/figs/full-pipe.png" alt="DeepTutor Full-Stack Workflow" width="100%">
-</div>
-
-### 💬 User Interface Layer
-• **Intuitive Interaction**: Simple bidirectional query-response flow for intuitive interaction.<br>
-• **Structured Output**: Structured response generation that organizes complex information into actionable outputs.
-
-### 🤖 Intelligent Agent Modules
-• **Problem Solving & Assessment**: Step-by-step problem solving and custom assessment generation.<br>
-• **Research & Learning**: Deep Research for topic exploration and Guided Learning with visualization.<br>
-• **Idea Generation**: Automated and interactive concept development with multi-source insights.
-
-### 🔧 Tool Integration Layer
-• **Information Retrieval**: RAG hybrid retrieval, real-time web search, and academic paper databases.<br>
-• **Processing & Analysis**: Python code execution, query item lookup, and PDF parsing for document analysis.
-
-### 🧠 Knowledge & Memory Foundation
-• **Knowledge Graph**: Entity-relation mapping for semantic connections and knowledge discovery.<br>
-• **Vector Store**: Embedding-based semantic search for intelligent content retrieval.<br>
-• **Memory System**: Session state management and citation tracking for contextual continuity.
-
-## 📋 Todo
-> 🌟 Star to follow our future updates!
-- [ x ] Multi-linguistic support
-- [ x ] DeepTutor Community
-- [ x ] Video & Audio file support
-- [ x ] Atomic RAG pipeline customize
-- [ - ] Incremental Knowledge-base Edit
-- [ - ] Personalized Workspace
-- [ - ] DataBase Visualization
-- [ - ] Online Demo
-
-## 🚀 Getting Started
-
-### Step 1: Pre-Configuration
-
-**① Clone Repository**
-
-```bash
-git clone https://github.com/HKUDS/DeepTutor.git
-cd DeepTutor
+```mermaid
+graph TD
+    START((START)) --> investigate_node
+    investigate_node --> note_node
+    note_node -- 未收敛 --> investigate_node
+    note_node -- 收敛 --> plan_node
+    
+    plan_node --> exec_tools_node
+    exec_tools_node --> solve_step_node
+    
+    solve_step_node -- 需要更多工具 --> exec_tools_node
+    solve_step_node -- 当前步骤完成 --> response_node
+    
+    response_node -- 还有下一步 --> advance_step_node
+    advance_step_node --> exec_tools_node
+    
+    response_node -- 无更多步骤 --> finalize_node
+    finalize_node --> END((END))
+    
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+    class START,END startend;
 ```
 
-**② Set Up Environment Variables**
+**节点说明：**
 
-```bash
+- **investigate_node**: 通过 RAG / 网络搜索 / 条目查询采集知识，构建知识链
+- **note_node**: 对每条知识项 LLM 摘要提炼
+- **plan_node**: 基于知识链规划求解步骤列表
+- **exec_tools_node**: 执行当前步骤待处理的工具调用
+- **solve_step_node**: 决策：发起新工具调用 或 标记步骤完成
+- **response_node**: 汇总所有工具结果，生成步骤回答
+- **advance_step_node**: 推进至下一步骤
+- **finalize_node**: 编译最终答案（可选精确答案润色）
+
+**特性：**
+
+- **反思纠错**：调查环多轮迭代，知识未收敛则继续检索。
+- **多工具支持**：RAG（naive/hybrid）、网络搜索、条目查询、代码执行。
+- **完整引用链**：每步工具调用均生成引用（`rag_X`、`web_X`）。
+- **前端实时流**：每节点推送 `{type:progress}` + `{type:log}` 两条事件。
+
+------
+
+### 2. 📝 Research — 深度研究报告
+
+对给定主题进行多阶段系统性研究，产出带引用的 Markdown 研究报告。
+
+**三阶段 Map-Reduce 图结构：**
+
+代码段
+
+```mermaid
+graph TD
+    START((START)) --> rephrase_node
+    
+    subgraph 阶段一: 规划
+        rephrase_node --> decompose_node
+    end
+    
+    decompose_node -->|Send API 并行分发| B1[research_block_node]
+    decompose_node -->|Send API 并行分发| B2[research_block_node ...]
+    decompose_node -->|Send API 并行分发| B3[research_block_node]
+    
+    subgraph 阶段二: 研究
+        B1
+        B2
+        B3
+    end
+    
+    B1 --> report_node
+    B2 --> report_node
+    B3 --> report_node
+    
+    subgraph 阶段三: 报告
+        report_node
+    end
+    
+    report_node --> END((END))
+    
+    classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+    class START,END startend;
+```
+
+**节点说明：**
+
+- **rephrase_node**: 优化研究主题表述，提升检索质量
+- **decompose_node**: 将主题拆解为若干子课题块（支持 RAG 辅助拆解）
+- **research_block_node**: 对单个子课题多轮工具调用研究（可并行）
+- **report_node**: 整合所有子课题结果，生成带引用的 Markdown 报告
+
+**计划模式：**
+
+| **模式**   | **子课题数** | **最大迭代** | **适用场景** |
+| ---------- | ------------ | ------------ | ------------ |
+| **quick**  | 2            | 2            | 快速了解     |
+| **medium** | 3            | 4            | 一般研究     |
+| **deep**   | 5            | 6            | 深度研究     |
+| **auto**   | 自动         | 自动         | 自适应       |
+
+**特性：**
+
+- LangGraph `Send` API 实现子课题真正并行研究。
+- 支持工具按需启用：RAG、网络搜索、学术论文检索、条目查询、代码执行。
+- `CitationManager` 统一管理 `PLAN-XX` / `CIT-X-XX` 格式引用。
+- 研究结果保存至 `data/user/research/{id}/report.md`。
+
+------
+
+### 3. 🎓 Guide — 引导式学习
+
+基于笔记本记录，生成逐步交互式 HTML 学习页面，支持多轮对话。
+
+**有状态图结构：**
+
+代码段
+
+```mermaid
+graph TD
+    START((START)) --> route_action_node
+    
+    route_action_node -- create --> locate_node
+    locate_node --> interactive_node
+    
+    route_action_node -- start / fix_html --> interactive_node
+    interactive_node -- fix --> interactive_node
+    
+    route_action_node -- next --> advance_index_node
+    advance_index_node -- 未完成 --> interactive_node
+    advance_index_node -- 已完成 --> summary_node
+    
+    route_action_node -- chat --> chat_node
+    
+    %% 统一指向 END
+    locate_node -.-> END((END))
+    interactive_node -.-> END
+    summary_node -.-> END
+    chat_node -.-> END
+
+    classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+    class START,END startend;
+```
+
+**节点说明：**
+
+- **locate_node**: 从笔记本记录中 LLM 提取知识点列表（含标题/摘要/难度）
+- **interactive_node**: 为当前知识点生成交互式 HTML 学习页面
+- **chat_node**: 围绕当前知识点进行多轮问答
+- **advance_index_node**: 推进至下一个知识点
+- **summary_node**: 所有知识点学习完成后生成学习总结报告
+- **fix_html_node**: 用户反馈渲染问题时重新生成 HTML
+
+**特性：**
+
+- `MemorySaver` Checkpointer：跨连接保持会话状态。
+- 知识点进度追踪与完成检测。
+- HTML 渲染异常一键修复。
+
+------
+
+### 4. 💡 IdeaGen — 科研创意生成
+
+从笔记本记录或自由文本描述中，系统性生成高质量科研创意。
+
+**5 节点线性流水线：**
+
+代码段
+
+```mermaid
+graph LR
+    START((START)) --> extract_node --> loose_filter_node --> explore_node --> strict_filter_node --> statement_node --> END((END))
+    
+    classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+    class START,END startend;
+```
+
+**节点说明：**
+
+- **extract_node**: 从笔记本记录或输入文本提取知识点
+- **loose_filter_node**: 宽松过滤，去除明显不适合的知识点
+- **explore_node**: 每个知识点生成 5+ 个研究方向
+- **strict_filter_node**: 严格过滤（每组至少保留 1 个，至少拒绝 2 个）
+- **statement_node**: 为最终创意生成 Markdown 格式研究陈述
+
+**特性：**
+
+- 双重过滤机制保障创意质量。
+- 支持笔记本跨记录整合输入。
+- WebSocket 流式逐条推送创意：`{"type": "idea", "data": {...}}`。
+
+------
+
+### 5. 📝 Question — 智能题目生成
+
+基于知识库内容，自动生成可配置的练习题目，支持仿真真实试卷风格。
+
+**3 节点验证流水线：**
+
+代码段
+
+```mermaid
+graph LR
+    START((START)) --> retrieve_node --> generate_node --> relevance_node --> END((END))
+    
+    classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+    class START,END startend;
+```
+
+**节点说明：**
+
+- **retrieve_node**: LLM 生成检索查询，并行拉取知识库上下文
+- **generate_node**: 基于检索内容生成 N 道题目
+- **relevance_node**: 分类验证题目与知识库的相关性，过滤低质量题目
+
+**特性：**
+
+- 可配置题目要求：难度、类型、主题、侧重点。
+- 仿真模式：上传 PDF 试卷，仿照真实出题风格生成题目。
+- 并行检索提升效率。
+
+------
+
+### 6. ✍️ Co-Writer — 智能写作助手
+
+提供文本编辑、内容扩写/缩写/改写，以及一键生成播客语音稿。
+
+**两套独立图：**
+
+代码段
+
+```mermaid
+graph LR
+    subgraph 编辑管线
+        S1((START)) --> retrieve_context_node --> edit_node --> E1((END))
+    end
+    
+    subgraph 播客管线
+        S2((START)) --> narrate_node --> E2((END))
+    end
+    
+    classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+    class S1,E1,S2,E2 startend;
+```
+
+**节点说明：**
+
+- **retrieve_context_node**: 按来源（RAG / 网络 / 无）获取参考上下文
+- **edit_node**: 依据指令对文本执行改写 / 扩写 / 缩写
+- **narrate_node**: 生成播客语音稿 + 提取要点 + 可选 TTS 音频
+
+**特性：**
+
+- 三种编辑动作：`rewrite` / `expand` / `shorten`。
+- TTS 支持：OpenAI / Azure TTS，多种音色可选。
+- 操作历史持久化，支持导出 Markdown。
+- 自动标注（automark）功能。
+
+------
+
+### 7. 💬 Chat — 知识库对话
+
+基于知识库的多轮对话助手，支持实时 RAG 检索与网络搜索增强回答。
+
+**2 节点线性图：**
+
+代码段
+
+```mermaid
+graph LR
+    START((START)) --> retrieve_context_node --> chat_node --> END((END))
+    
+    classDef startend fill:#d4edda,stroke:#28a745,stroke-width:2px;
+    class START,END startend;
+```
+
+**节点说明：**
+
+- **retrieve_context_node**: 按需检索知识库 / 网络，获取对话上下文
+- **chat_node**: 结合上下文与历史消息生成回答
+
+**特性：**
+
+- `MemorySaver` 跨轮会话持久化。
+- 回答附带 RAG 引用来源。
+- 可独立开关 RAG 与网络搜索。
+
+------
+
+## 🛠️ 工具层
+
+| **工具名称**      | **工具说明**                                             |
+| ----------------- | -------------------------------------------------------- |
+| **rag_tool**      | 向量库检索，支持 `naive` / `hybrid` 两种模式             |
+| **web_search**    | 网络搜索，支持 Perplexity / Tavily / Serper / Jina / Exa |
+| **paper_search**  | 学术论文检索（可设置年份范围）                           |
+| **query_item**    | 知识库条目精准查询                                       |
+| **code_executor** | Python 沙箱执行，含超时与工作区隔离                      |
+
+------
+
+## 🚀 快速开始
+
+### 环境要求
+
+- Python 3.10+
+- Node.js 18+
+- 至少一个 LLM API Key
+
+### 1. 配置环境变量
+
+Bash
+
+```
 cp .env.example .env
-# Edit .env file with your API keys
 ```
 
-<details>
-<summary>📋 <b>Environment Variables Reference</b></summary>
+**.env 必填项：**
 
-| Variable | Required | Description |
-|:---|:---:|:---|
-| `LLM_MODEL` | **Yes** | Model name (e.g., `gpt-4o`) |
-| `LLM_API_VERSION` | No | API version for Azure OpenAI (e.g., `2024-02-15-preview`) |
-| `LLM_API_KEY` | **Yes** | Your LLM API key |
-| `LLM_HOST` | **Yes** | API endpoint URL |
-| `EMBEDDING_MODEL` | **Yes** | Embedding model name |
-| `EMBEDDING_API_VERSION` | No | API version for Azure OpenAI Embeddings |
-| `EMBEDDING_API_KEY` | **Yes** | Embedding API key |
-| `EMBEDDING_HOST` | **Yes** | Embedding API endpoint |
-| `BACKEND_PORT` | No | Backend port (default: `8001`) |
-| `FRONTEND_PORT` | No | Frontend port (default: `3782`) |
-| `NEXT_PUBLIC_API_BASE` | No | **Frontend API URL** - Set this for remote/LAN access (e.g., `http://192.168.1.100:8001`) |
-| `TTS_*` | No | Text-to-Speech settings |
-| `SEARCH_PROVIDER` | No | Search provider (options: `perplexity`, `tavily`, `serper`, `jina`, `exa`, `baidu`, default: `perplexity`) |
-| `SEARCH_API_KEY` | No | Unified API key for all search providers |
+代码段
 
-> 💡 **Remote Access**: If accessing from another device (e.g., `192.168.31.66:3782`), add to `.env`:
-> ```bash
-> NEXT_PUBLIC_API_BASE=http://192.168.31.66:8001
-> ```
+```
+# LLM（必填）
+LLM_BINDING=openai          # openai / anthropic / deepseek / ollama / ...
+LLM_MODEL=gpt-4o
+LLM_API_KEY=sk-...
+LLM_HOST=                   # 本地模型或代理时填写
 
-</details>
+# Embedding（必填）
+EMBEDDING_BINDING=openai
+EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_API_KEY=sk-...
+EMBEDDING_DIMENSION=3072    # 必须与模型输出维度一致
 
-**③ Configure Ports & LLM** *(Optional)*
+# 网络搜索（可选）
+SEARCH_PROVIDER=tavily      # perplexity / tavily / serper / jina / exa
+SEARCH_API_KEY=tvly-...
 
-- **Ports**: Set in `.env` file → `BACKEND_PORT` / `FRONTEND_PORT` (defaults: 8001/3782)
-- **LLM**: Edit `config/agents.yaml` → `temperature` / `max_tokens` per module
-- See [Configuration Docs](config/README.md) for details
+# TTS 语音（可选）
+TTS_BINDING=openai
+TTS_API_KEY=sk-...
+TTS_VOICE=alloy
 
-**④ Try Demo Knowledge Bases** *(Optional)*
-
-<details>
-<summary>📚 <b>Available Demos</b></summary>
-
-- **Research Papers** — 5 papers from our lab ([AI-Researcher](https://github.com/HKUDS/AI-Researcher), [LightRAG](https://github.com/HKUDS/LightRAG), etc.)
-- **Data Science Textbook** — 8 chapters, 296 pages ([Book Link](https://ma-lab-berkeley.github.io/deep-representation-learning-book/))
-
-</details>
-
-1. Download from [Google Drive](https://drive.google.com/drive/folders/1iWwfZXiTuQKQqUYb5fGDZjLCeTUP6DA6?usp=sharing)
-2. Extract into `data/` directory
-
-> Demo KBs use `text-embedding-3-large` with `dimensions = 3072`
-
-**⑤ Create Your Own Knowledge Base** *(After Launch)*
-
-1. Go to http://localhost:3782/knowledge
-2. Click "New Knowledge Base" → Enter name → Upload PDF/TXT/MD files
-3. Monitor progress in terminal
-
----
-
-### Step 2: Choose Your Installation Method
-
-#### 🐳 Option A: Docker Deployment
-
-> No Python/Node.js setup required
-
-**Prerequisites**: [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/install/)
-
-**Quick Start** — Build from source:
-
-```bash
-docker compose up                  # Build and start (~11 min first run on mac mini M4)
-docker compose build --no-cache    # Clear cache and rebuild after pull the newest repo
+# 端口（默认值如下）
+BACKEND_PORT=8001
+FRONTEND_PORT=3782
 ```
 
-**Or use pre-built image** (faster):
+### 2. 安装
 
-```bash
-# Works on all platforms - Docker auto-detects your architecture
-docker run -d --name deeptutor \
-  -p 8001:8001 -p 3782:3782 \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/config:/app/config:ro \
-  ghcr.io/hkuds/deeptutor:latest
+Bash
 
-# Windows PowerShell: use ${PWD} instead of $(pwd)
 ```
-
-**Common Commands**:
-
-```bash
-docker compose up -d      # Start
-docker compose down       # Stop
-docker compose logs -f    # View logs
-docker compose up --build # Rebuild after changes
-```
-
-<details>
-<summary>📋 <b>More Docker Options</b> (Pre-built images, Cloud deployment, Custom ports)</summary>
-
-**Pre-built Image Tags:**
-
-| Tag | Architectures | Description |
-|:----|:--------------|:------------|
-| `:latest` | AMD64 + ARM64 | Latest stable release (auto-detects your architecture) |
-| `:v0.5.x` | AMD64 + ARM64 | Specific version (auto-detects your architecture) |
-| `:v0.5.x-amd64` | AMD64 only | Explicit AMD64 image |
-| `:v0.5.x-arm64` | ARM64 only | Explicit ARM64 image |
-
-> 💡 The `:latest` tag is a **multi-architecture image** — Docker automatically pulls the correct version for your system (Intel/AMD or Apple Silicon/ARM)
-
-**Cloud Deployment** — Must set external API URL:
-
-```bash
-docker run -d --name deeptutor \
-  -p 8001:8001 -p 3782:3782 \
-  -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001 \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  ghcr.io/hkuds/deeptutor:latest
-```
-
-**Custom Ports Example:**
-
-```bash
-docker run -d --name deeptutor \
-  -p 9001:9001 -p 3000:3000 \
-  -e BACKEND_PORT=9001 \
-  -e FRONTEND_PORT=3000 \
-  -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:9001 \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  ghcr.io/hkuds/deeptutor:latest
-```
-
-</details>
-
----
-
-#### 💻 Option B: Manual Installation
-
-> For development or non-Docker environments
-
-**Prerequisites**: Python 3.10+, Node.js 18+
-
-**1. Set Up Environment**:
-
-```bash
-# Using conda (Recommended)
-conda create -n deeptutor python=3.10 && conda activate deeptutor
-
-# Or using venv
-python -m venv venv && source venv/bin/activate  # Windows: venv\Scripts\activate
-```
-
-**2. Install Dependencies**:
-
-```bash
-# One-click installation (Recommended)
+# 一键安装（推荐）
 python scripts/install_all.py
-# Or: bash scripts/install_all.sh
 
-# Or manual installation
+# 或手动安装
 pip install -r requirements.txt
-npm install --prefix web
+cd web && npm install
 ```
 
-**3. Launch**:
+### 3. 启动
 
-```bash
-python scripts/start_web.py    # Start frontend + backend
-# Or: python scripts/start.py  # CLI only
-# Stop: Ctrl+C
-```
-
-<details>
-<summary>🔧 <b>Start Frontend & Backend Separately</b></summary>
-
-**Backend** (FastAPI):
-```bash
-python src/api/run_server.py
-# Or: uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-**Frontend** (Next.js):
-```bash
-cd web && npm install && npm run dev -- -p 3782
-```
-
-**Note**: Create `web/.env.local`:
-```bash
-NEXT_PUBLIC_API_BASE=http://localhost:8001
-```
-
-| Service | Default Port |
-|:---:|:---:|
-| Backend | `8001` |
-| Frontend | `3782` |
-
-</details>
-
-### Access URLs
-
-| Service | URL | Description |
-|:---:|:---|:---|
-| **Frontend** | http://localhost:3782 | Main web interface |
-| **API Docs** | http://localhost:8001/docs | Interactive API documentation |
-
----
-
-## 📂 Data Storage
-
-All user content and system data are stored in the `data/` directory:
+Bash
 
 ```
-data/
-├── knowledge_bases/              # Knowledge base storage
-└── user/                         # User activity data
-    ├── solve/                    # Problem solving results and artifacts
-    ├── question/                 # Generated questions
-    ├── research/                 # Research reports and cache
-    ├── co-writer/                # Interactive IdeaGen documents and audio files
-    ├── notebook/                 # Notebook records and metadata
-    ├── guide/                    # Guided learning sessions
-    ├── logs/                     # System logs
-    └── run_code_workspace/       # Code execution workspace
+# 开发模式
+python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
+cd web && npm run dev   # 新终端
+
+# Docker
+docker compose up -d
 ```
 
-Results are automatically saved during all activities. Directories are created automatically as needed.
+访问 `http://localhost:3782`
 
-## 📦 Core Modules
+------
 
-<details>
-<summary><b>🧠 Smart Solver</b></summary>
+## 🌐 支持的提供商
 
-<details>
-<summary><b>Architecture Diagram</b></summary>
+| **类型**       | **提供商**                                                   |
+| -------------- | ------------------------------------------------------------ |
+| **LLM (云端)** | OpenAI · Azure OpenAI · Anthropic · DeepSeek · OpenRouter · Groq · Together · Mistral |
+| **LLM (本地)** | Ollama · LM Studio · vLLM · Llama.cpp                        |
+| **Embedding**  | OpenAI · Azure OpenAI · Jina · Cohere · HuggingFace · Google · Ollama · LM Studio |
+| **网络搜索**   | Perplexity · Tavily · Serper · Jina · Exa                    |
 
-![Smart Solver Architecture](assets/figs/solve.png)
+------
 
-</details>
+## 📂 项目结构
 
-> **Intelligent problem-solving system** based on **Analysis Loop + Solve Loop** dual-loop architecture, supporting multi-mode reasoning and dynamic knowledge retrieval.
-
-**Core Features**
-
-| Feature | Description |
-|:---:|:---|
-| Dual-Loop Architecture | **Analysis Loop**: InvestigateAgent → NoteAgent<br>**Solve Loop**: PlanAgent → ManagerAgent → SolveAgent → CheckAgent → Format |
-| Multi-Agent Collaboration | Specialized agents: InvestigateAgent, NoteAgent, PlanAgent, ManagerAgent, SolveAgent, CheckAgent |
-| Real-time Streaming | WebSocket transmission with live reasoning process display |
-| Tool Integration | RAG (naive/hybrid), Web Search, Query Item, Code Execution |
-| Persistent Memory | JSON-based memory files for context preservation |
-| Citation Management | Structured citations with reference tracking |
-
-**Usage**
-
-1. Visit http://localhost:{frontend_port}/solver
-2. Select a knowledge base
-3. Enter your question, click "Solve"
-4. Watch the real-time reasoning process and final answer
-
-<details>
-<summary><b>Python API</b></summary>
-
-```python
-import asyncio
-from src.agents.solve import MainSolver
-
-async def main():
-    solver = MainSolver(kb_name="ai_textbook")
-    result = await solver.solve(
-        question="Calculate the linear convolution of x=[1,2,3] and h=[4,5]",
-        mode="auto"
-    )
-    print(result['formatted_solution'])
-
-asyncio.run(main())
-```
-
-</details>
-
-<details>
-<summary><b>Output Location</b></summary>
+Plaintext
 
 ```
-data/user/solve/solve_YYYYMMDD_HHMMSS/
-├── investigate_memory.json    # Analysis Loop memory
-├── solve_chain.json           # Solve Loop steps & tool records
-├── citation_memory.json       # Citation management
-├── final_answer.md            # Final solution (Markdown)
-├── performance_report.json    # Performance monitoring
-└── artifacts/                 # Code execution outputs
+NeoTutor/
+├── src/
+│   ├── agents/
+│   │   ├── chat/
+│   │   │   ├── lg_graph.py        # 2 节点线性图
+│   │   │   ├── lg_nodes.py
+│   │   │   └── lg_state.py
+│   │   ├── co_writer/
+│   │   │   ├── lg_graph.py        # 编辑 + 播客 两套图
+│   │   │   ├── lg_nodes.py
+│   │   │   └── lg_state.py
+│   │   ├── guide/
+│   │   │   ├── lg_graph.py        # 7 节点有状态图
+│   │   │   ├── lg_nodes.py
+│   │   │   └── lg_state.py
+│   │   ├── ideagen/
+│   │   │   ├── lg_graph.py        # 5 节点线性流水线
+│   │   │   ├── lg_nodes.py
+│   │   │   └── lg_state.py
+│   │   ├── question/
+│   │   │   ├── lg_graph.py        # 3 节点验证流水线
+│   │   │   ├── lg_nodes.py
+│   │   │   └── lg_state.py
+│   │   ├── research/
+│   │   │   ├── lg_graph.py        # 4 节点 Map-Reduce
+│   │   │   ├── lg_nodes.py
+│   │   │   └── lg_state.py
+│   │   └── solve/
+│   │       ├── lg_graph.py        # 8 节点双循环
+│   │       ├── lg_nodes.py
+│   │       └── lg_state.py
+│   ├── api/
+│   │   ├── main.py                # FastAPI 入口
+│   │   ├── routers/               # HTTP / WebSocket 端点
+│   │   └── utils/                 # notebook、history、progress
+│   ├── services/
+│   │   ├── llm/                   # LLM 提供商抽象 + langchain_factory
+│   │   ├── embedding/
+│   │   ├── rag/                   # Docling / MinerU 解析管线
+│   │   ├── prompt/                # YAML Prompt 管理（en/zh）
+│   │   └── search/
+│   └── tools/                     # rag / web / paper / query / code
+├── config/
+│   ├── main.yaml                  # 全局路径、工具开关、模块参数
+│   └── agents.yaml                # temperature / max_tokens per module
+├── web/                           # Next.js App Router + i18n（en/zh）
+├── data/
+│   ├── knowledge_bases/           # 向量库（运行时生成）
+│   └── user/                      # 用户输出
+└── .env.example
 ```
 
-</details>
+------
 
-</details>
+## 🧑‍💻 开发指令
 
----
-
-<details>
-<summary><b>📝 Question Generator</b></summary>
-
-<details>
-<summary><b>Architecture Diagram</b></summary>
-
-![Question Generator Architecture](assets/figs/question-gen.png)
-
-</details>
-
-> **Dual-mode question generation system** supporting **custom knowledge-based generation** and **reference exam paper mimicking** with automatic validation.
-
-**Core Features**
-
-| Feature | Description |
-|:---:|:---|
-| Custom Mode | **Background Knowledge** → **Question Planning** → **Generation** → **Single-Pass Validation**<br>Analyzes question relevance without rejection logic |
-| Mimic Mode | **PDF Upload** → **MinerU Parsing** → **Question Extraction** → **Style Mimicking**<br>Generates questions based on reference exam structure |
-| ReAct Engine | QuestionGenerationAgent with autonomous decision-making (think → act → observe) |
-| Validation Analysis | Single-pass relevance analysis with `kb_coverage` and `extension_points` |
-| Question Types | Multiple choice, fill-in-the-blank, calculation, written response, etc. |
-| Batch Generation | Parallel processing with progress tracking |
-| Complete Persistence | All intermediate files saved (background knowledge, plan, individual results) |
-| Timestamped Output | Mimic mode creates batch folders: `mimic_YYYYMMDD_HHMMSS_{pdf_name}/` |
-
-**Usage**
-
-**Custom Mode:**
-1. Visit http://localhost:{frontend_port}/question
-2. Fill in requirements (topic, difficulty, question type, count)
-3. Click "Generate Questions"
-4. View generated questions with validation reports
-
-**Mimic Mode:**
-1. Visit http://localhost:{frontend_port}/question
-2. Switch to "Mimic Exam" tab
-3. Upload PDF or provide parsed exam directory
-4. Wait for parsing → extraction → generation
-5. View generated questions alongside original references
-
-<details>
-<summary><b>Python API</b></summary>
-
-**Custom Mode - Full Pipeline:**
-```python
-import asyncio
-from src.agents.question import AgentCoordinator
-
-async def main():
-    coordinator = AgentCoordinator(
-        kb_name="ai_textbook",
-        output_dir="data/user/question"
-    )
-
-    # Generate multiple questions from text requirement
-    result = await coordinator.generate_questions_custom(
-        requirement_text="Generate 3 medium-difficulty questions about deep learning basics",
-        difficulty="medium",
-        question_type="choice",
-        count=3
-    )
-
-    print(f"✅ Generated {result['completed']}/{result['requested']} questions")
-    for q in result['results']:
-        print(f"- Relevance: {q['validation']['relevance']}")
-
-asyncio.run(main())
-```
-
-**Mimic Mode - PDF Upload:**
-```python
-from src.agents.question.tools.exam_mimic import mimic_exam_questions
-
-result = await mimic_exam_questions(
-    pdf_path="exams/midterm.pdf",
-    kb_name="calculus",
-    output_dir="data/user/question/mimic_papers",
-    max_questions=5
-)
-
-print(f"✅ Generated {result['successful_generations']} questions")
-print(f"Output: {result['output_file']}")
-```
-
-</details>
-
-<details>
-<summary><b>Output Location</b></summary>
-
-**Custom Mode:**
-```
-data/user/question/custom_YYYYMMDD_HHMMSS/
-├── background_knowledge.json      # RAG retrieval results
-├── question_plan.json              # Question planning
-├── question_1_result.json          # Individual question results
-├── question_2_result.json
-└── ...
-```
-
-**Mimic Mode:**
-```
-data/user/question/mimic_papers/
-└── mimic_YYYYMMDD_HHMMSS_{pdf_name}/
-    ├── {pdf_name}.pdf                              # Original PDF
-    ├── auto/{pdf_name}.md                          # MinerU parsed markdown
-    ├── {pdf_name}_YYYYMMDD_HHMMSS_questions.json  # Extracted questions
-    └── {pdf_name}_YYYYMMDD_HHMMSS_generated_questions.json  # Generated questions
-```
-
-</details>
-
-</details>
-
----
-
-<details>
-<summary><b>🎓 Guided Learning</b></summary>
-
-<details>
-<summary><b>Architecture Diagram</b></summary>
-
-![Guided Learning Architecture](assets/figs/guide.png)
-
-</details>
-
-> **Personalized learning system** based on notebook content, automatically generating progressive learning paths through interactive pages and smart Q&A.
-
-**Core Features**
-
-| Feature | Description |
-|:---:|:---|
-| Multi-Agent Architecture | **LocateAgent**: Identifies 3-5 progressive knowledge points<br>**InteractiveAgent**: Converts to visual HTML pages<br>**ChatAgent**: Provides contextual Q&A<br>**SummaryAgent**: Generates learning summaries |
-| Smart Knowledge Location | Automatic analysis of notebook content |
-| Interactive Pages | HTML page generation with bug fixing |
-| Smart Q&A | Context-aware answers with explanations |
-| Progress Tracking | Real-time status with session persistence |
-| Cross-Notebook Support | Select records from multiple notebooks |
-
-**Usage Flow**
-
-1. **Select Notebook(s)** — Choose one or multiple notebooks (cross-notebook selection supported)
-2. **Generate Learning Plan** — LocateAgent identifies 3-5 core knowledge points
-3. **Start Learning** — InteractiveAgent generates HTML visualization
-4. **Learning Interaction** — Ask questions, click "Next" to proceed
-5. **Complete Learning** — SummaryAgent generates learning summary
-
-<details>
-<summary><b>Output Location</b></summary>
+Bash
 
 ```
-data/user/guide/
-└── session_{session_id}.json    # Complete session state, knowledge points, chat history
+pytest tests/ -v             # 运行测试
+ruff check . && ruff format . # 检查与格式化
+mypy .                        # 类型检查
+cd web && npm run build       # 前端构建
+cd web && npm run i18n:check  # i18n 一致性检查
 ```
 
-</details>
+**配置说明：**
 
-</details>
+- `config/main.yaml`：工具开关、迭代次数、超时、并发度等运行参数。
+- `config/agents.yaml`：各模块 LLM 参数（temperature、max_tokens）。
 
----
+> **注**：API 启动时会自动校验两个配置文件中工具的一致性，不一致则拒绝启动。
 
-<details>
-<summary><b>✏️ Interactive IdeaGen (Co-Writer)</b></summary>
+------
 
-<details>
-<summary><b>Architecture Diagram</b></summary>
+## 💾 数据存储
 
-![Interactive IdeaGen Architecture](assets/figs/co-writer.png)
+| **数据类型**      | **路径**                                 |
+| ----------------- | ---------------------------------------- |
+| **Notebook 记录** | `data/user/notebook/`                    |
+| **用户历史**      | `data/user/user_history.json`            |
+| **Solve 会话**    | `data/user/solver_sessions.json`         |
+| **Chat 会话**     | `data/user/chat_sessions.json`           |
+| **研究报告**      | `data/user/research/{id}/report.md`      |
+| **研究引用**      | `data/user/research/{id}/citations.json` |
+| **语音文件**      | `data/user/co_writer/audio/`             |
 
-</details>
+------
 
-> **Intelligent Markdown editor** supporting AI-assisted writing, auto-annotation, and TTS narration.
+## 📜 许可证
 
-**Core Features**
-
-| Feature | Description |
-|:---:|:---|
-| Rich Text Editing | Full Markdown syntax support with live preview |
-| EditAgent | **Rewrite**: Custom instructions with optional RAG/web context<br>**Shorten**: Compress while preserving key information<br>**Expand**: Add details and context |
-| Auto-Annotation | Automatic key content identification and marking |
-| NarratorAgent | Script generation, TTS audio, multiple voices (Cherry, Stella, Annie, Cally, Eva, Bella) |
-| Context Enhancement | Optional RAG or web search for additional context |
-| Multi-Format Export | Markdown, PDF, etc. |
-
-**Usage**
-
-1. Visit http://localhost:{frontend_port}/co_writer
-2. Enter or paste text in the editor
-3. Use AI features: Rewrite, Shorten, Expand, Auto Mark, Narrate
-4. Export to Markdown or PDF
-
-<details>
-<summary><b>Output Location</b></summary>
-
-```
-data/user/co-writer/
-├── audio/                    # TTS audio files
-│   └── {operation_id}.mp3
-├── tool_calls/               # Tool call history
-│   └── {operation_id}_{tool_type}.json
-└── history.json              # Edit history
-```
-
-</details>
-
-</details>
-
----
-
-<details>
-<summary><b>🔬 Deep Research</b></summary>
-
-<details>
-<summary><b>Architecture Diagram</b></summary>
-
-![Deep Research Architecture](assets/figs/deepresearch.png)
-
-</details>
-
-> **DR-in-KG** (Deep Research in Knowledge Graph) — A systematic deep research system based on **Dynamic Topic Queue** architecture, enabling multi-agent collaboration across three phases: **Planning → Researching → Reporting**.
-
-**Core Features**
-
-| Feature | Description |
-|:---:|:---|
-| Three-Phase Architecture | **Phase 1 (Planning)**: RephraseAgent (topic optimization) + DecomposeAgent (subtopic decomposition)<br>**Phase 2 (Researching)**: ManagerAgent (queue scheduling) + ResearchAgent (research decisions) + NoteAgent (info compression)<br>**Phase 3 (Reporting)**: Deduplication → Three-level outline generation → Report writing with citations |
-| Dynamic Topic Queue | Core scheduling system with TopicBlock state management: `PENDING → RESEARCHING → COMPLETED/FAILED`. Supports dynamic topic discovery during research |
-| Execution Modes | **Series Mode**: Sequential topic processing<br>**Parallel Mode**: Concurrent multi-topic processing with `AsyncCitationManagerWrapper` for thread-safe operations |
-| Multi-Tool Integration | **RAG** (hybrid/naive), **Query Item** (entity lookup), **Paper Search**, **Web Search**, **Code Execution** — dynamically selected by ResearchAgent |
-| Unified Citation System | Centralized CitationManager as single source of truth for citation ID generation, ref_number mapping, and deduplication |
-| Preset Configurations | **quick**: Fast research (1-2 subtopics, 1-2 iterations)<br>**medium/standard**: Balanced depth (5 subtopics, 4 iterations)<br>**deep**: Thorough research (8 subtopics, 7 iterations)<br>**auto**: Agent autonomously decides depth |
-
-**Citation System Architecture**
-
-The citation system follows a centralized design with CitationManager as the single source of truth:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      CitationManager                            │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │  ID Generation  │  │  ref_number Map │  │   Deduplication │  │
-│  │  PLAN-XX        │  │  citation_id →  │  │   (papers only) │  │
-│  │  CIT-X-XX       │  │  ref_number     │  │                 │  │
-│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘  │
-└───────────┼────────────────────┼────────────────────┼───────────┘
-            │                    │                    │
-     ┌──────┴──────┐      ┌──────┴──────┐      ┌──────┴──────┐
-     │DecomposeAgent│      │ReportingAgent│      │ References │
-     │ ResearchAgent│      │ (inline [N]) │      │  Section   │
-     │  NoteAgent   │      └─────────────┘      └────────────┘
-     └─────────────┘
-```
-
-| Component | Description |
-|:---:|:---|
-| ID Format | **PLAN-XX** (planning stage RAG queries) + **CIT-X-XX** (research stage, X=block number) |
-| ref_number Mapping | Sequential 1-based numbers built from sorted citation IDs, with paper deduplication |
-| Inline Citations | Simple `[N]` format in LLM output, post-processed to clickable `[[N]](#ref-N)` links |
-| Citation Table | Clear reference table provided to LLM: `Cite as [1] → (RAG) query preview...` |
-| Post-processing | Automatic format conversion + validation to remove invalid citation references |
-| Parallel Safety | Thread-safe async methods (`get_next_citation_id_async`, `add_citation_async`) for concurrent execution |
-
-**Parallel Execution Architecture**
-
-When `execution_mode: "parallel"` is enabled, multiple topic blocks are researched concurrently:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Parallel Research Execution                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   DynamicTopicQueue                    AsyncCitationManagerWrapper      │
-│   ┌─────────────────┐                  ┌─────────────────────────┐      │
-│   │ Topic 1 (PENDING)│ ──┐             │  Thread-safe wrapper    │      │
-│   │ Topic 2 (PENDING)│ ──┼──→ asyncio  │  for CitationManager    │      │
-│   │ Topic 3 (PENDING)│ ──┤   Semaphore │                         │      │
-│   │ Topic 4 (PENDING)│ ──┤   (max=5)   │  • get_next_citation_   │      │
-│   │ Topic 5 (PENDING)│ ──┘             │    id_async()           │      │
-│   └─────────────────┘                  │  • add_citation_async() │      │
-│            │                           └───────────┬─────────────┘      │
-│            ▼                                       │                    │
-│   ┌─────────────────────────────────────────────────────────────┐      │
-│   │              Concurrent ResearchAgent Tasks                  │      │
-│   │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐        │      │
-│   │  │ Task 1  │  │ Task 2  │  │ Task 3  │  │ Task 4  │  ...   │      │
-│   │  │(Topic 1)│  │(Topic 2)│  │(Topic 3)│  │(Topic 4)│        │      │
-│   │  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘        │      │
-│   │       │            │            │            │              │      │
-│   │       └────────────┴────────────┴────────────┘              │      │
-│   │                         │                                    │      │
-│   │                         ▼                                    │      │
-│   │              AsyncManagerAgentWrapper                        │      │
-│   │              (Thread-safe queue updates)                     │      │
-│   └─────────────────────────────────────────────────────────────┘      │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-| Component | Description |
-|:---:|:---|
-| `asyncio.Semaphore` | Limits concurrent tasks to `max_parallel_topics` (default: 5) |
-| `AsyncCitationManagerWrapper` | Wraps CitationManager with `asyncio.Lock()` for thread-safe ID generation |
-| `AsyncManagerAgentWrapper` | Ensures queue state updates are atomic across parallel tasks |
-| Real-time Progress | Live display of all active research tasks with status indicators |
-
-**Agent Responsibilities**
-
-| Agent | Phase | Responsibility |
-|:---:|:---:|:---|
-| RephraseAgent | Planning | Optimizes user input topic, supports multi-turn user interaction for refinement |
-| DecomposeAgent | Planning | Decomposes topic into subtopics with RAG context, obtains citation IDs from CitationManager |
-| ManagerAgent | Researching | Queue state management, task scheduling, dynamic topic addition |
-| ResearchAgent | Researching | Knowledge sufficiency check, query planning, tool selection, requests citation IDs before each tool call |
-| NoteAgent | Researching | Compresses raw tool outputs into summaries, creates ToolTraces with pre-assigned citation IDs |
-| ReportingAgent | Reporting | Builds citation map, generates three-level outline, writes report sections with citation tables, post-processes citations |
-
-**Report Generation Pipeline**
-
-```
-1. Build Citation Map     →  CitationManager.build_ref_number_map()
-2. Generate Outline       →  Three-level headings (H1 → H2 → H3)
-3. Write Sections         →  LLM uses [N] citations with provided citation table
-4. Post-process           →  Convert [N] → [[N]](#ref-N), validate references
-5. Generate References    →  Academic-style entries with collapsible source details
-```
-
-**Usage**
-
-1. Visit http://localhost:{frontend_port}/research
-2. Enter research topic
-3. Select research mode (quick/medium/deep/auto)
-4. Watch real-time progress with parallel/series execution
-5. View structured report with clickable inline citations
-6. Export as Markdown or PDF (with proper page splitting and Mermaid diagram support)
-
-<details>
-<summary><b>CLI</b></summary>
-
-```bash
-# Quick mode (fast research)
-python src/agents/research/main.py --topic "Deep Learning Basics" --preset quick
-
-# Medium mode (balanced)
-python src/agents/research/main.py --topic "Transformer Architecture" --preset medium
-
-# Deep mode (thorough research)
-python src/agents/research/main.py --topic "Graph Neural Networks" --preset deep
-
-# Auto mode (agent decides depth)
-python src/agents/research/main.py --topic "Reinforcement Learning" --preset auto
-```
-
-</details>
-
-<details>
-<summary><b>Python API</b></summary>
-
-```python
-import asyncio
-from src.agents.research import ResearchPipeline
-from src.core.core import get_llm_config, load_config_with_main
-
-async def main():
-    # Load configuration (main.yaml merged with any module-specific overrides)
-    config = load_config_with_main("research_config.yaml")
-    llm_config = get_llm_config()
-
-    # Create pipeline (agent parameters loaded from agents.yaml automatically)
-    pipeline = ResearchPipeline(
-        config=config,
-        api_key=llm_config["api_key"],
-        base_url=llm_config["base_url"],
-        kb_name="ai_textbook"  # Optional: override knowledge base
-    )
-
-    # Run research
-    result = await pipeline.run(topic="Attention Mechanisms in Deep Learning")
-    print(f"Report saved to: {result['final_report_path']}")
-
-asyncio.run(main())
-```
-
-</details>
-
-<details>
-<summary><b>Output Location</b></summary>
-
-```
-data/user/research/
-├── reports/                          # Final research reports
-│   ├── research_YYYYMMDD_HHMMSS.md   # Markdown report with clickable citations [[N]](#ref-N)
-│   └── research_*_metadata.json      # Research metadata and statistics
-└── cache/                            # Research process cache
-    └── research_YYYYMMDD_HHMMSS/
-        ├── queue.json                # DynamicTopicQueue state (TopicBlocks + ToolTraces)
-        ├── citations.json            # Citation registry with ID counters and ref_number mapping
-        │                             #   - citations: {citation_id: citation_info}
-        │                             #   - counters: {plan_counter, block_counters}
-        ├── step1_planning.json       # Planning phase results (subtopics + PLAN-XX citations)
-        ├── planning_progress.json    # Planning progress events
-        ├── researching_progress.json # Researching progress events
-        ├── reporting_progress.json   # Reporting progress events
-        ├── outline.json              # Three-level report outline structure
-        └── token_cost_summary.json   # Token usage statistics
-```
-
-**Citation File Structure** (`citations.json`):
-```json
-{
-  "research_id": "research_20241209_120000",
-  "citations": {
-    "PLAN-01": {"citation_id": "PLAN-01", "tool_type": "rag_hybrid", "query": "...", "summary": "..."},
-    "CIT-1-01": {"citation_id": "CIT-1-01", "tool_type": "paper_search", "papers": [...], ...}
-  },
-  "counters": {
-    "plan_counter": 2,
-    "block_counters": {"1": 3, "2": 2}
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><b>Configuration Options</b></summary>
-
-Key configuration in `config/main.yaml` (research section) and `config/agents.yaml`:
-
-```yaml
-# config/agents.yaml - Agent LLM parameters
-research:
-  temperature: 0.5
-  max_tokens: 12000
-
-# config/main.yaml - Research settings
-research:
-  # Execution Mode
-  researching:
-    execution_mode: "parallel"    # "series" or "parallel"
-    max_parallel_topics: 5        # Max concurrent topics
-    max_iterations: 5             # Max iterations per topic
-
-  # Tool Switches
-    enable_rag_hybrid: true       # Hybrid RAG retrieval
-    enable_rag_naive: true        # Basic RAG retrieval
-    enable_paper_search: true     # Academic paper search
-    enable_web_search: true       # Web search (also controlled by tools.web_search.enabled)
-    enable_run_code: true         # Code execution
-
-  # Queue Limits
-  queue:
-    max_length: 5                 # Maximum topics in queue
-
-  # Reporting
-  reporting:
-    enable_inline_citations: true # Enable clickable [N] citations in report
-
-  # Presets: quick, medium, deep, auto
-
-# Global tool switches in tools section
-tools:
-  web_search:
-    enabled: true                 # Global web search switch (higher priority)
-```
-
-</details>
-
-</details>
-
----
-
-<details>
-<summary><b>💡 Automated IdeaGen</b></summary>
-
-<details>
-<summary><b>Architecture Diagram</b></summary>
-
-![Automated IdeaGen Architecture](assets/figs/ideagen.png)
-
-</details>
-
-> **Research idea generation system** that extracts knowledge points from notebook records and generates research ideas through multi-stage filtering.
-
-**Core Features**
-
-| Feature | Description |
-|:---:|:---|
-| MaterialOrganizerAgent | Extracts knowledge points from notebook records |
-| Multi-Stage Filtering | **Loose Filter** → **Explore Ideas** (5+ per point) → **Strict Filter** → **Generate Markdown** |
-| Idea Exploration | Innovative thinking from multiple dimensions |
-| Structured Output | Organized markdown with knowledge points and ideas |
-| Progress Callbacks | Real-time updates for each stage |
-
-**Usage**
-
-1. Visit http://localhost:{frontend_port}/ideagen
-2. Select a notebook with records
-3. Optionally provide user thoughts/preferences
-4. Click "Generate Ideas"
-5. View generated research ideas organized by knowledge points
-
-<details>
-<summary><b>Python API</b></summary>
-
-```python
-import asyncio
-from src.agents.ideagen import IdeaGenerationWorkflow, MaterialOrganizerAgent
-from src.core.core import get_llm_config
-
-async def main():
-    llm_config = get_llm_config()
-
-    # Step 1: Extract knowledge points from materials
-    organizer = MaterialOrganizerAgent(
-        api_key=llm_config["api_key"],
-        base_url=llm_config["base_url"]
-    )
-    knowledge_points = await organizer.extract_knowledge_points(
-        "Your learning materials or notebook content here"
-    )
-
-    # Step 2: Generate research ideas
-    workflow = IdeaGenerationWorkflow(
-        api_key=llm_config["api_key"],
-        base_url=llm_config["base_url"]
-    )
-    result = await workflow.process(knowledge_points)
-    print(result)  # Markdown formatted research ideas
-
-asyncio.run(main())
-```
-
-</details>
-
-</details>
-
----
-
-<details>
-<summary><b>📊 Dashboard + Knowledge Base Management</b></summary>
-
-> **Unified system entry** providing activity tracking, knowledge base management, and system status monitoring.
-
-**Key Features**
-
-| Feature | Description |
-|:---:|:---|
-| Activity Statistics | Recent solving/generation/research records |
-| Knowledge Base Overview | KB list, statistics, incremental updates |
-| Notebook Statistics | Notebook counts, record distribution |
-| Quick Actions | One-click access to all modules |
-
-**Usage**
-
-- **Web Interface**: Visit http://localhost:{frontend_port} to view system overview
-- **Create KB**: Click "New Knowledge Base", upload PDF/Markdown documents
-- **View Activity**: Check recent learning activities on Dashboard
-
-</details>
-
----
-
-<details>
-<summary><b>📓 Notebook</b></summary>
-
-> **Unified learning record management**, connecting outputs from all modules to create a personalized learning knowledge base.
-
-**Core Features**
-
-| Feature | Description |
-|:---:|:---|
-| Multi-Notebook Management | Create, edit, delete notebooks |
-| Unified Record Storage | Integrate solving/generation/research/Interactive IdeaGen records |
-| Categorization Tags | Auto-categorize by type, knowledge base |
-| Custom Appearance | Color, icon personalization |
-
-**Usage**
-
-1. Visit http://localhost:{frontend_port}/notebook
-2. Create new notebook (set name, description, color, icon)
-3. After completing tasks in other modules, click "Add to Notebook"
-4. View and manage all records on the notebook page
-
-</details>
-
----
-
-### 📖 Module Documentation
-
-<table>
-<tr>
-<td align="center"><a href="config/README.md">Configuration</a></td>
-<td align="center"><a href="data/README.md">Data Directory</a></td>
-<td align="center"><a href="src/api/README.md">API Backend</a></td>
-<td align="center"><a href="src/core/README.md">Core Utilities</a></td>
-</tr>
-<tr>
-<td align="center"><a href="src/knowledge/README.md">Knowledge Base</a></td>
-<td align="center"><a href="src/tools/README.md">Tools</a></td>
-<td align="center"><a href="web/README.md">Web Frontend</a></td>
-<td align="center"><a href="src/agents/solve/README.md">Solve Module</a></td>
-</tr>
-<tr>
-<td align="center"><a href="src/agents/question/README.md">Question Module</a></td>
-<td align="center"><a href="src/agents/research/README.md">Research Module</a></td>
-<td align="center"><a href="src/agents/co_writer/README.md">Interactive IdeaGen Module</a></td>
-<td align="center"><a href="src/agents/guide/README.md">Guide Module</a></td>
-</tr>
-<tr>
-<td align="center" colspan="4"><a href="src/agents/ideagen/README.md">Automated IdeaGen Module</a></td>
-</tr>
-</table>
-
-## ❓ FAQ
-
-<details>
-<summary><b>Backend fails to start?</b></summary>
-
-**Checklist**
-- Confirm Python version >= 3.10
-- Confirm all dependencies installed: `pip install -r requirements.txt`
-- Check if port 8001 is in use
-- Check `.env` file configuration
-
-**Solutions**
-- **Change port**: Set `BACKEND_PORT=9001` in `.env` file
-- **Check logs**: Review terminal error messages
-
-</details>
-
-<details>
-<summary><b>Port occupied after Ctrl+C?</b></summary>
-
-**Problem**
-
-After pressing Ctrl+C during a running task (e.g., deep research), restarting shows "port already in use" error.
-
-**Cause**
-
-Ctrl+C sometimes only terminates the frontend process while the backend continues running in the background.
-
-**Solution**
-
-```bash
-# macOS/Linux: Find and kill the process
-lsof -i :8001
-kill -9 <PID>
-
-# Windows: Find and kill the process
-netstat -ano | findstr :8001
-taskkill /PID <PID> /F
-```
-
-Then restart the service with `python scripts/start_web.py`.
-
-</details>
-
-<details>
-<summary><b>npm: command not found error?</b></summary>
-
-**Problem**
-
-Running `scripts/start_web.py` shows `npm: command not found` or exit status 127.
-
-**Checklist**
-- Check if npm is installed: `npm --version`
-- Check if Node.js is installed: `node --version`
-- Confirm conda environment is activated (if using conda)
-
-**Solutions**
-```bash
-# Option A: Using Conda (Recommended)
-conda install -c conda-forge nodejs
-
-# Option B: Using Official Installer
-# Download from https://nodejs.org/
-
-# Option C: Using nvm
-nvm install 18
-nvm use 18
-```
-
-**Verify Installation**
-```bash
-node --version  # Should show v18.x.x or higher
-npm --version   # Should show version number
-```
-
-</details>
-
-<details>
-<summary><b>Long path names on Windows installation?</b></summary>
-
-**Problem**
-
-On Windows, you may encounter errors related to long file paths during installation, such as "The filename or extension is too long" or similar path length issues.
-
-**Cause**
-
-Windows has a default limitation on path lengths (260 characters), which can be exceeded by DeepTutor's nested directory structures and dependencies.
-
-**Solution**
-
-Enable long path support system-wide by running the following command in an Administrator Command Prompt:
-
-```cmd
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
-```
-
-After running this command, restart your terminal for the changes to take effect.
-
-</details>
-
-<details>
-<summary><b>Frontend cannot connect to backend?</b></summary>
-
-**Checklist**
-- Confirm backend is running (visit http://localhost:8001/docs)
-- Check browser console for error messages
-
-**Solution**
-
-Create `.env.local` in `web` directory:
-
-```bash
-NEXT_PUBLIC_API_BASE=http://localhost:8001
-```
-
-</details>
-
-<details>
-<summary><b>Docker: Frontend cannot connect in cloud deployment?</b></summary>
-
-**Problem**
-
-When deploying to a cloud server, the frontend shows connection errors like "Failed to fetch" or "NEXT_PUBLIC_API_BASE is not configured".
-
-**Cause**
-
-The default API URL is `localhost:8001`, which points to the user's local machine in the browser, not your server.
-
-**Solution**
-
-Set the `NEXT_PUBLIC_API_BASE_EXTERNAL` environment variable to your server's public URL:
-
-```bash
-# Using docker run
-docker run -d --name deeptutor \
-  -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001 \
-  ... other options ...
-  ghcr.io/hkuds/deeptutor:latest
-
-# Or in .env file
-NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001
-```
-
-**Custom Port Example:**
-```bash
-# If using backend port 9001
--e BACKEND_PORT=9001 \
--e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:9001
-```
-
-</details>
-
-<details>
-<summary><b>Docker: How to use custom ports?</b></summary>
-
-**Solution**
-
-Set both the port environment variables AND the port mappings:
-
-```bash
-docker run -d --name deeptutor \
-  -p 9001:9001 -p 4000:4000 \
-  -e BACKEND_PORT=9001 \
-  -e FRONTEND_PORT=4000 \
-  -e NEXT_PUBLIC_API_BASE_EXTERNAL=http://localhost:9001 \
-  ... other env vars ...
-  ghcr.io/hkuds/deeptutor:latest
-```
-
-**Important**: The `-p` port mapping must match the `BACKEND_PORT`/`FRONTEND_PORT` values.
-
-</details>
-
-<details>
-<summary><b>WebSocket connection fails?</b></summary>
-
-**Checklist**
-- Confirm backend is running
-- Check firewall settings
-- Confirm WebSocket URL is correct
-
-**Solution**
-- **Check backend logs**
-- **Confirm URL format**: `ws://localhost:8001/api/v1/...`
-
-</details>
-
-<details>
-<summary><b>Settings page shows "Error loading data" with HTTPS reverse proxy?</b></summary>
-
-**Problem**
-
-When deploying behind an HTTPS reverse proxy (e.g., nginx), the Settings page shows "Error loading data" and browser DevTools reveals that HTTPS requests are being redirected to HTTP (307 redirect).
-
-**Cause**
-
-This issue has been fixed in v0.5.0+. If you're using an older version, the problem was caused by FastAPI's automatic trailing slash redirects generating HTTP URLs instead of preserving the original HTTPS protocol.
-
-**Solution (for v0.5.0+)**
-
-Update to the latest version. The fix disables automatic slash redirects to prevent protocol downgrade.
-
-**Recommended nginx Configuration**
-
-When using nginx as an HTTPS reverse proxy, use the following configuration:
-
-```nginx
-# Frontend
-location / {
-    proxy_pass http://localhost:3782;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-
-# Backend API
-location /api/ {
-    proxy_pass http://localhost:8001;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;  # Important: preserves original protocol
-}
-
-# WebSocket support
-location /api/v1/ {
-    proxy_pass http://localhost:8001;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-```
-
-**Environment Variable**
-
-Set in `.env`:
-```bash
-NEXT_PUBLIC_API_BASE=https://your-domain.com:port
-```
-
-See: [GitHub Issue #112](https://github.com/HKUDS/DeepTutor/issues/112)
-
-</details>
-
-<details>
-<summary><b>Where are module outputs stored?</b></summary>
-
-| Module | Output Path |
-|:---:|:---|
-| Solve | `data/user/solve/solve_YYYYMMDD_HHMMSS/` |
-| Question | `data/user/question/question_YYYYMMDD_HHMMSS/` |
-| Research | `data/user/research/reports/` |
-| Interactive IdeaGen | `data/user/co-writer/` |
-| Notebook | `data/user/notebook/` |
-| Guide | `data/user/guide/session_{session_id}.json` |
-| Logs | `data/user/logs/` |
-
-</details>
-
-<details>
-<summary><b>How to add a new knowledge base?</b></summary>
-
-**Web Interface**
-1. Visit http://localhost:{frontend_port}/knowledge
-2. Click "New Knowledge Base"
-3. Enter knowledge base name
-4. Upload PDF/TXT/MD documents
-5. System will process documents in background
-
-**CLI**
-```bash
-python -m src.knowledge.start_kb init <kb_name> --docs <pdf_path>
-```
-
-</details>
-
-<details>
-<summary><b>How to incrementally add documents to existing KB?</b></summary>
-
-**CLI (Recommended)**
-```bash
-python -m src.knowledge.add_documents <kb_name> --docs <new_document.pdf>
-```
-
-**Benefits**
-- Only processes new documents, saves time and API costs
-- Automatically merges with existing knowledge graph
-- Preserves all existing data
-
-</details>
-
-<details>
-<summary><b>Numbered items extraction failed with uvloop.Loop error?</b></summary>
-
-**Problem**
-
-When initializing a knowledge base, you may encounter this error:
-```
-ValueError: Can't patch loop of type <class 'uvloop.Loop'>
-```
-
-This occurs because Uvicorn uses `uvloop` event loop by default, which is incompatible with `nest_asyncio`.
-
-**Solution**
-
-Use one of the following methods to extract numbered items:
-
-```bash
-# Option 1: Using the shell script (recommended)
-./scripts/extract_numbered_items.sh <kb_name>
-
-# Option 2: Direct Python command
-python src/knowledge/extract_numbered_items.py --kb <kb_name> --base-dir ./data/knowledge_bases
-```
-
-This will extract numbered items (Definitions, Theorems, Equations, etc.) from your knowledge base without reinitializing it.
-
-</details>
-
-
-</div>
-
-## ⭐ Star History
-
-<div align="center">
-
-<p>
-  <a href="https://github.com/HKUDS/DeepTutor/stargazers"><img src="assets/roster/stargazers.svg" alt="Stargazers"/></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/HKUDS/DeepTutor/network/members"><img src="assets/roster/forkers.svg" alt="Forkers"/></a>
-</p>
-
-<a href="https://www.star-history.com/#HKUDS/DeepTutor&type=timeline&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-  </picture>
-</a>
-
-</div>
-
-## 🤝 Contribution
-
-<div align="center">
-
-We hope DeepTutor could become a gift for the community. 🎁
-
-<a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contributors to HKUDS/DeepTutor" />
-</a>
-
-</div>
-
-## 🔗 Related Projects
-
-<div align="center">
-
-| [⚡ LightRAG](https://github.com/HKUDS/LightRAG) | [🎨 RAG-Anything](https://github.com/HKUDS/RAG-Anything) | [💻 DeepCode](https://github.com/HKUDS/DeepCode) | [🔬 AI-Researcher](https://github.com/HKUDS/AI-Researcher) |
-|:---:|:---:|:---:|:---:|
-| Simple and Fast RAG | Multimodal RAG | AI Code Assistant | Research Automation |
-
-**[Data Intelligence Lab @ HKU](https://github.com/HKUDS)**
-
-[⭐ Star us](https://github.com/HKUDS/DeepTutor/stargazers) · [🐛 Report a bug](https://github.com/HKUDS/DeepTutor/issues) · [💬 Discussions](https://github.com/HKUDS/DeepTutor/discussions)
-
----
-
-This project is licensed under the ***[AGPL-3.0 License](LICENSE)***.
-
-<p align="center">
-  <em> Thanks for visiting ✨ DeepTutor!</em><br><br>
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.DeepTutor&style=for-the-badge&color=00d4ff" alt="Views">
-</p>
-
-</div>
+本项目基于 **AGPL-3.0** 协议开源
