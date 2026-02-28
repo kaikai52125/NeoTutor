@@ -2,18 +2,17 @@
 """
 Solve Agent System - Dual-Loop Architecture
 Analysis Loop + Solve Loop
+
+Agent classes removed — logic inlined into lg_nodes.py.
 """
 
 from pathlib import Path
 import sys
 
-# Add project root to path for logs import
 _project_root = Path(__file__).parent.parent.parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-# Infrastructure
-from src.agents.base_agent import BaseAgent
 from src.logging import Logger, get_logger
 
 from .utils import (
@@ -25,14 +24,6 @@ from .utils import (
 SolveAgentLogger = Logger
 
 # Memory system
-# Analysis loop
-from .analysis_loop import (
-    InvestigateAgent,
-    NoteAgent,
-)
-
-# Main controller
-from .main_solver import MainSolver
 from .memory import (
     InvestigateMemory,
     KnowledgeItem,
@@ -42,24 +33,17 @@ from .memory import (
     ToolCallRecord,
 )
 
+# Main controller
+from .main_solver import MainSolver
+
 # Session management
 from .session_manager import SolverSessionManager, get_solver_session_manager
 
-# Solve loop
-from .solve_loop import (
-    ManagerAgent,
-    PrecisionAnswerAgent,
-    ResponseAgent,
-    SolveAgent,
-    ToolAgent,
-)
-
 __all__ = [
-    # Infrastructure
-    "BaseAgent",
+    # Logging
     "Logger",
     "get_logger",
-    "SolveAgentLogger",  # Backwards compatibility
+    "SolveAgentLogger",
     "PerformanceMonitor",
     "ConfigValidator",
     # Memory system
@@ -69,15 +53,6 @@ __all__ = [
     "SolveMemory",
     "SolveChainStep",
     "ToolCallRecord",
-    # Analysis Loop
-    "InvestigateAgent",
-    "NoteAgent",
-    # Solve Loop
-    "ManagerAgent",
-    "SolveAgent",
-    "ResponseAgent",
-    "PrecisionAnswerAgent",
-    "ToolAgent",
     # Main Controller
     "MainSolver",
     # Session Management

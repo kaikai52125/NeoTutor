@@ -53,6 +53,7 @@ solve:
   max_solve_correction_iterations: 3
   enable_citations: true
   save_intermediate_results: true
+  code_execution_timeout: 60
   # Valid tools for investigate agent validation
   valid_tools:
     - "rag_naive"

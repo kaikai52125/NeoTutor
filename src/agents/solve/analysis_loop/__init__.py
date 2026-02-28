@@ -2,13 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Analysis Loop - Analysis loop (Investigate → Note)
-Deeply understand user questions, collect and organize knowledge
+
+Agent classes removed — logic inlined into lg_nodes.py.
 """
 
-from .investigate_agent import InvestigateAgent
-from .note_agent import NoteAgent
-
-__all__ = [
-    "InvestigateAgent",
-    "NoteAgent",
-]
+__all__: list = []
