@@ -6,6 +6,7 @@
 export interface ChatSource {
   rag?: Array<{ kb_name: string; content: string }>;
   web?: Array<{ url: string; title?: string; snippet?: string }>;
+  images?: string[];
 }
 
 /**

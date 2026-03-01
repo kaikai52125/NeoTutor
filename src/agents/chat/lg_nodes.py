@@ -108,6 +108,31 @@ async def retrieve_context_node(state: ChatState) -> dict[str, Any]:
                 sources["web"] = web_citations[:5]
         except Exception as exc:
             logger.warning("Web search failed: %s", exc)
+        else:
+            # Extract image URLs from search results
+            images: list[str] = []
+            # Tavily: to_dict() promotes metadata keys to top level, so images is at root
+            for img in web_result.get("images", []):
+                url_str = img if isinstance(img, str) else img.get("url", "")
+                if url_str and url_str.startswith("http"):
+                    images.append(url_str)
+            # Jina: each citation may have attributes.images (dict alt->url)
+            for c in web_citations:
+                for img_url in (c.get("attributes") or {}).get("images", {}).values():
+                    if img_url and img_url.startswith("http"):
+                        images.append(img_url)
+            if images:
+                sources["images"] = images[:6]  # 最多展示 6 张
+                # 把图片列表追加到上下文，让 LLM 在回答中直接用 Markdown 语法嵌入
+                img_lines = "\n".join(
+                    f"图片{i+1} URL: {url}" for i, url in enumerate(images[:6])
+                )
+                context_parts.append(
+                    "[Web Search Images]\n"
+                    "以下是搜索到的相关图片URL，请在回答的合适位置直接用 Markdown 语法嵌入，"
+                    "格式必须是 ![简短描述](完整URL)，不要写图1、图2等文字占位符：\n"
+                    + img_lines
+                )
 
     return {
         "rag_context": "\n\n".join(context_parts),
@@ -149,7 +174,17 @@ async def chat_node(state: ChatState) -> dict[str, Any]:
 
     rag_context: str = state.get("rag_context", "") or ""
     if rag_context:
-        messages_for_llm.append(SystemMessage(content=f"Reference context:\n{rag_context}"))
+        # 如果上下文中包含图片，附加使用说明
+        has_images = "[Web Search Images]" in rag_context
+        img_instruction = (
+            "\n\n【强制要求】上下文中已提供图片URL，你必须在回答的对应位置直接嵌入图片，"
+            "格式为 ![简短描述](完整URL)。"
+            "严禁写图1、图2等文字占位符，必须用真实URL。"
+            if has_images else ""
+        )
+        messages_for_llm.append(
+            SystemMessage(content=f"Reference context:\n{rag_context}{img_instruction}")
+        )
 
     # Append conversation history (already accumulated by add_messages)
     messages_for_llm.extend(state.get("messages", []))  # type: ignore[arg-type]

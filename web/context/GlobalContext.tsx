@@ -227,6 +227,7 @@ interface IdeaGenState {
 interface ChatSource {
   rag?: Array<{ kb_name: string; content: string }>;
   web?: Array<{ url: string; title?: string; snippet?: string }>;
+  images?: string[];
 }
 
 interface HomeChatMessage {
@@ -1979,7 +1980,7 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
           if (lastMessage?.role === "assistant") {
             messages[messages.length - 1] = {
               ...lastMessage,
-              sources: { rag: data.rag, web: data.web },
+              sources: { rag: data.rag, web: data.web, images: data.images },
             };
           }
           return { ...prev, messages };

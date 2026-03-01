@@ -109,7 +109,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             if (lastMessage?.role === "assistant") {
               messages[messages.length - 1] = {
                 ...lastMessage,
-                sources: { rag: data.rag, web: data.web },
+                sources: { rag: data.rag, web: data.web, images: data.images },
               };
             }
             return { ...prev, messages };

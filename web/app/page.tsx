@@ -428,6 +428,18 @@ export default function HomePage() {
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex]}
+                            components={{
+                              img: ({ src, alt }) => (
+                                <a href={src} target="_blank" rel="noopener noreferrer">
+                                  <img
+                                    src={src}
+                                    alt={alt || ""}
+                                    className="rounded-lg max-h-64 w-auto my-2 border border-slate-200 dark:border-slate-600 hover:opacity-80 transition-opacity cursor-pointer"
+                                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                  />
+                                </a>
+                              ),
+                            }}
                           >
                             {processLatexContent(msg.content)}
                           </ReactMarkdown>
@@ -474,6 +486,30 @@ export default function HomePage() {
                             ))}
                           </div>
                         )}
+
+                      {/* Web search images */}
+                      {msg.sources?.images && msg.sources.images.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {msg.sources.images.map((imgUrl, i) => (
+                            <a
+                              key={`img-${i}`}
+                              href={imgUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 hover:opacity-80 transition-opacity"
+                            >
+                              <img
+                                src={imgUrl}
+                                alt=""
+                                className="h-24 w-auto object-cover"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).parentElement!.style.display = "none";
+                                }}
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}

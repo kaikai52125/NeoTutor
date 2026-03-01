@@ -42,7 +42,7 @@ class TavilyProvider(BaseSearchProvider):
         max_results: int = 10,
         include_answer: bool = True,  # Get LLM-generated answer
         include_raw_content: bool = False,  # Get full page content
-        include_images: bool = False,
+        include_images: bool = True,
         days: int | None = None,  # Time filter (1-365)
         include_domains: list[str] | None = None,
         exclude_domains: list[str] | None = None,

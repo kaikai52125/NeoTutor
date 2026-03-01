@@ -184,8 +184,14 @@ async def websocket_chat(websocket: WebSocket):
                 )
 
             except Exception as e:
-                logger.error(f"Chat processing error: {e}")
-                await websocket.send_json({"type": "error", "message": str(e)})
+                err_str = str(e)
+                logger.error(f"Chat processing error: {err_str}")
+                # 内容审核拦截：阿里云/其他平台触发的安全过滤
+                if "inappropriate content" in err_str or "content_filter" in err_str or "sensitive" in err_str.lower():
+                    user_msg = "抱歉，该内容触发了平台安全审核，无法生成回复。请尝试换一种表达方式。"
+                else:
+                    user_msg = err_str
+                await websocket.send_json({"type": "error", "message": user_msg})
 
     except WebSocketDisconnect:
         logger.debug("Client disconnected from chat")
