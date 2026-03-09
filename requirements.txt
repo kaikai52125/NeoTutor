@@ -81,18 +81,18 @@ bandit>=1.8.0
 
 ## langchain langgraph重构
 # 基础核心层 (显式指定以解决依赖树冲突)
-langchain-core==1.2.15
-langsmith==0.3.45
+langchain-core==1.2.17
+langsmith==0.7.14
 
 # 逻辑与图编排层
 langchain==1.2.10
-langgraph==1.0.9
+langgraph==1.0.10
 langgraph-checkpoint>=2.1.0,<5.0.0  # LangGraph 1.0+ 必需的持久化组件
 
 # 集成层 (注意社区包版本同步)
 langchain-openai>=0.3.0
 langchain-anthropic>=0.3.0   # Anthropic Claude via LangChain (新增，供 LangGraph nodes 使用)
-langchain-community==0.3.0   # 2026.02 发布的版本，完全兼容 core 1.2.15
+langchain-community==0.4.1   # 2026.02 发布的版本，完全兼容 core 1.2.15
 langgraph-checkpoint-sqlite>=2.0.0  # SQLite checkpointer for persistent sessions (新增)
 typing-extensions>=4.10.0
 # 如果你还需要使用旧版的 LLMChain 或 RetrievalQA (即非 LCEL 语法)
